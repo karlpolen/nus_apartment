@@ -23,25 +23,37 @@ n_month=filter(specs,name=="Permit_issued")$n_month
 time_index=filter(specs,name=="Start_date")$date+
   months(0:(-1+n_month))
 #monthly items
-specs_monthly=filter(specs,!is.na(value_per_mth))
-templist=map(as.list(specs_monthly$value_per_mth),
+specsub=filter(specs,!is.na(value_per_mth))
+templist=map(as.list(specsub$value_per_mth),
                       ~xts(rep(.x,n_month),time_index)) %>%
-  set_names(specs_monthly$name)
+  set_names(specsub$name)
 predevelopment=c(predevelopment,templist)
 #predevelopment budget
-specs_predev=filter(specs,!is.na(value),
+specsub=filter(specs,!is.na(value),
                     !is.na(n_month))
-templist=map(as.list(specs_predev$value),
+templist=map(as.list(specsub$value),
              ~xts(rep(.x/n_month,n_month),time_index)) %>%
-  set_names(specs_predev$name)
+  set_names(specsub$name)
 predevelopment=c(predevelopment,templist)
 #one time items
 specs_onetime=filter(specs,!is.na(value),
                     !is.na(month_incur))
-templist=map(as.list(1:nrow(specs_onetime)),
-             ~xts(specs_onetime$value[.x],time_index[specs_onetime$month_incur[.x]])) %>%
-  set_names(specs_predev$name)
+templist=map(as.list(1:nrow(specsub)),
+             ~xts(specsub$value[.x],time_index[specsub$month_incur[.x]])) %>%
+  set_names(specs_onetime$name)
 predevelopment=c(predevelopment,templist)
+permit_issued=time_index[1]+months(filter(specs,name=="Permit_issued")$n_month)
+#construction
+construction=list()
+specs=apt_config[["Construction"]]
 
-
-
+time_index=permit_issued+months(0:(-1+filter(specs,name=="Total_time")$end_month))
+specsub=filter(specs,!is.na(value))
+specsub=specsub%>%
+  mutate(dur=end_month-start_month+1) %>%
+  mutate(cost_per_mth=value/dur)
+templist=map(as.list(1:nrow(specsub)),
+             ~xts(rep(specsub$cost_per_mth[.x],specsub$dur[.x]),
+                  time_index[(specsub$start_month[.x]):(specsub$end_month[.x])])) %>%
+  set_names(specsub$name)
+construction=c(constrction,templist)
