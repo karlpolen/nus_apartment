@@ -8,7 +8,7 @@ library(timetk)
 
 #xts convenience function
 mergesum.xts=function(x) {
-  x=do.call(merge,x)
+  x=do.call(cbind,x)
   idx=index(x)
   xsum=rowSums(x,na.rm=TRUE)
   xts(xsum,idx)
@@ -188,4 +188,46 @@ cash_obj=merge(mergesum.xts(Revenue),
                -mergesum.xts(CapEx))
 cash_obj=cbind(cash_obj,rowSums(cash_obj,na.rm=TRUE))
 colnames(cash_obj)=c("Revenue","Predevelopment","Construction","OpEx","CapEx","Unlv_CF")
-               
+
+
+#construction loan
+
+specs=apt_config[["ConstructionLoan"]]
+specspl=apt_config[["PermanentLoan"]]
+max_loan=filter(specs,name=="max_loan")$value
+LTC=filter(specs,name=="LTC")$pct
+cl_start=permit_issued
+cl_end=CofO_date+months(filter(specspl,name=="CofO_lag")$n_month)
+cl_interval=interval(cl_start,cl_end)
+cf=cash_obj$Unlv_CF
+cumeq=0
+cumcost=0
+pdates=ymd(paste(year(cl_start),month(cl_start),1))
+num=ceiling(cl_interval/months(1))
+pdates=pdates+months(1:num)-days(1)
+pdates=pdates[pdates %within% cl_interval]
+pdates.x=xts(rep(0,length(pdates)),pdates)
+cf=mergesum.xts(list(cf,pdates.x))
+cf.d=coredata(cf)
+cf.t=index(cf)
+int=filter(specscap,name=="Const_loan_rate")$pct_per_year
+loanbal=vector(0)
+draw=vector(0)
+interest=vector(0)
+accrint=0
+for(i in 2:length(cf)) {
+  cumcost=cumcost-cf.d[i-1]
+  if(!cf.t[i] %within% cl_interval) {
+    loanbal[i]=0
+    interest[i]=0
+    draw[i]=0
+    next(i)
+  }
+  ndays=as.numeric(cf.t[i]-cf.t[i-1])
+  interest[i]=max(0,int*ndays/365*(loanbal[i-1]-cf[i-1]))
+  loanbal[i]=min(0,loanbal[i-1]-cf[i-1]+interest[i])
+                 
+  
+  
+}
+  
