@@ -181,13 +181,37 @@ for(i in 1:nrow(specs)) {
 }
 CapEx=set_names(CapEx,capexnames)
 
+#working capital
+#set cash = max(500,000 or this months revenue)
+
+end_date=Start_date+months(model_length)
+proj_interval=interval(Start_date,end_date)
+fsdates=ymd(paste(year(Start_date),month(Start_date),1))
+num=ceiling(proj_interval/months(1))
+fsdates=fsdates+months(1:num)-days(1)
+fsdates=fsdates[fsdates %within% proj_interval]
+fsdates.x=xts(rep(NA,length(fsdates)),fsdates)
+fsdates.zero=xts(rep(0,length(fsdates)),fsdates)
+cashbal=mergesum.xts(list(fsdates.zero,total_rent))
+ep=endpoints(cashbal,"months")
+cashbal=period.apply(cashbal,INDEX=ep,FUN=sum)
+cashbalmin=xts(rep(500000,length(fsdates)),fsdates)
+cashbal=pmax(cashbal,cashbalmin)
+wc_change=diff(cashbal)
+wc_change[1]=cashbal[1]
+wc=list(wc_change,cashbal)
+
+
+
+#create an xts array of unlevered cashflows
 cash_obj=merge(mergesum.xts(Revenue),
                -mergesum.xts(predevelopment),
                -mergesum.xts(construction),
                -mergesum.xts(Expense),
-               -mergesum.xts(CapEx))
+               -mergesum.xts(CapEx),
+               -wc_change)
 cash_obj=cbind(cash_obj,rowSums(cash_obj,na.rm=TRUE))
-colnames(cash_obj)=c("Revenue","Predevelopment","Construction","OpEx","CapEx","Unlv_CF")
+colnames(cash_obj)=c("Revenue","Predevelopment","Construction","OpEx","CapEx","WorkingCapital","Unlv_CF")
 
 
 #construction loan
@@ -200,8 +224,6 @@ cl_start=permit_issued
 cl_end=CofO_date+months(filter(specspl,name=="CofO_lag")$n_month)
 cl_interval=interval(cl_start,cl_end)
 cf=cash_obj$Unlv_CF
-cumeq=0
-cumcost=0
 pdates=ymd(paste(year(cl_start),month(cl_start),1))
 num=ceiling(cl_interval/months(1))
 pdates=pdates+months(1:num)-days(1)
@@ -211,23 +233,70 @@ cf=mergesum.xts(list(cf,pdates.x))
 cf.d=coredata(cf)
 cf.t=index(cf)
 int=filter(specscap,name=="Const_loan_rate")$pct_per_year
-loanbal=vector(0)
-draw=vector(0)
-interest=vector(0)
+if(cf.t[1] %within% cl_interval & cf.d[1]<0) {
+  draw=-LTC*cf.d[1]
+  loanbal=draw
+} else {
+  loanbal=0
+  draw=0
+}
+cumcost=max(0,-cf.d[1])
+cumeq=cumcost-draw[1]
+interest=0
 accrint=0
 for(i in 2:length(cf)) {
-  cumcost=cumcost-cf.d[i-1]
+  cumcost=cumcost-cf.d[i]
+  ndays=as.numeric(cf.t[i]-cf.t[i-1])
+  interest[i]=loanbal[i-1]*ndays/365*int
+  cumcost=cumcost+interest[i]
+  accrint=accrint+interest[i]
   if(!cf.t[i] %within% cl_interval) {
     loanbal[i]=0
-    interest[i]=0
-    draw[i]=0
+    draw[i]=-(loanbal[i-1]+accrint)
+    accrint=0
     next(i)
   }
-  ndays=as.numeric(cf.t[i]-cf.t[i-1])
-  interest[i]=max(0,int*ndays/365*(loanbal[i-1]-cf[i-1]))
-  loanbal[i]=min(0,loanbal[i-1]-cf[i-1]+interest[i])
-                 
-  
-  
+  max_loan_i=min(max_loan,LTC*cumcost)
+  max_draw_i=max_loan_i-loanbal[i-1]
+  min_draw_i=-(loanbal[i-1]+accrint)  #a negative number, i.e. a payment
+  if(as.Date(cf.t[i]) %in% pdates) {
+    intpayable=accrint
+    } else {
+    intpayable=0
+  }
+  if(cf.d[i] > 0) {
+    draw[i]=-cf.d[i]
+  } else {
+    draw[i]=intpayable-cf.d[i]
+  }
+  draw[i]=min(draw[i],max_draw_i)
+  draw[i]=max(draw[i],min_draw_i)
+  print(paste(cf.t[i],"draw =",draw[i],"intpayable=",intpayable,"accrint",accrint))
+  if (draw[i]<0) {
+    draw_int=max(draw[i],-accrint)
+    draw_prin=draw[i]-draw_int
+    loanbal[i]=loanbal[i-1]+draw_prin
+    accrint=accrint+draw_int
+  } else {
+    loanbal[i]=loanbal[i-1]+draw[i]
+    accrint=accrint-intpayable
+  }
+  if(as.Date(cf.t[i]) %in% pdates) {
+    loanbal[i]=loanbal[i]+accrint
+    accrint=0
+  }
 }
-  
+residcf=cf.d-interest+draw
+residcf=xts(residcf,cf.t)
+interest=xts(interest,cf.t)
+draw=xts(draw,cf.t)
+loanbal=xts(loanbal,cf.t)
+loanbal=loanbal[fsdates]
+
+Construction_loan=list(loanbal,interest,draw,residcf)
+
+#Valuation
+#set value through stabilization as greater of cost or current ebitda/caprate
+#after stabilization, drop the cost floor
+
+
