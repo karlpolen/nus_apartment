@@ -337,6 +337,7 @@ fairvalue=aptvalue+defdmaintenance+cashbal
 pl_date=tail(index(draw[draw!=0]),1)
 pl_interval=interval(pl_date,end_date)
 LTV=filter(specspl,name=="LTV")$pct
+pl_intrate=filter(specscap,name=="Perm_loan_rate")$pct_per_year
 pl_costpct=filter(specspl,name=="cost_and_fee")$pct
 stablevalue=coredata(aptvalue[pl_date+months(12)])
 pl_loanamt=LTV*stablevalue
@@ -345,7 +346,38 @@ pl_bal[index(pl_bal)<pl_date]=0
 pl_bal[pl_date]=pl_loanamt
 pl_bal=na.locf(pl_bal)       
 pl_cost=xts(pl_loanamt*pl_costpct,pl_date)
-pl_interest=pl_intrate*pl_bal
+pl_interest=pl_intrate*pl_bal/12
 pl_proceeds=xts(pl_loanamt,pl_date)
 Permanent_loan=list(pl_balance=pl_bal,pl_interest=pl_interest,
-                    pl_cost=plcost,pl_proceeds=pl_proceeds)
+                    pl_cost=pl_cost,pl_proceeds=pl_proceeds)
+
+#assemble levered cash flow
+levcf_obj=merge(cash_obj[,"Unlv_CF"],
+           -Construction_loan[["interest"]],
+           Construction_loan[["draw"]]-Construction_loan[["interest"]],
+           -pl_interest,
+           pl_proceeds-pl_cost)
+levcf_obj=cbind(levcf_obj,rowSums(levcf_obj,na.rm=TRUE))
+names(levcf_obj)=c("Unlv_CF","CL_Interest","CL_Proceeds",
+                   "PL_Interest","PL_Proceeds","Lev_CF")
+
+#equity structure
+specswf=apt_config[["waterfall"]]
+specsam=apt_config[["AssetMgmt"]]
+amfeepct=filter(specsam,name=="am_fee")$pct_per_yr
+levcf=levcf_obj[,"Lev_CF"]
+#calculate asset management
+#no parameter drive for alternatives other than quarterly payment on invested equtiy
+#we will calculate running invested equity through permanent and then lock the fee
+#from there on out
+invest_equity=cumsum(levcf)
+invest_equity[index(invest_equity)>pl_date]=NA
+invest_equity=na.locf(invest_equity)
+ep=endpoints(invest_equity,"quarters")
+invest_equity_feebase=period.apply(invest_equity,ep,mean)
+am_fee=invest_equity_feebase*amfeepct/4
+
+#calculate promote 
+#promote calculations compound at every cash flow date to simplify a little
+
+
