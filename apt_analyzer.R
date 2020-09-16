@@ -293,10 +293,59 @@ draw=xts(draw,cf.t)
 loanbal=xts(loanbal,cf.t)
 loanbal=loanbal[fsdates]
 
-Construction_loan=list(loanbal,interest,draw,residcf)
+Construction_loan=list(loanbal=loanbal,interest=interest,draw=draw,residcf=residcf)
 
 #Valuation
 #set value through stabilization as greater of cost or current ebitda/caprate
 #after stabilization, drop the cost floor
 
+#create an investment cash flow to accumulate cost on fsdates including cl interest
+icf=cash_obj[,c("Predevelopment","Construction")]
+icf=cbind(-icf,Construction_loan[["interest"]])
+icf=xts(rowSums(icf,na.rm=TRUE),index(icf))
+cumicf=cumsum(icf)
+value_add_interval=interval(Start_date,CofO_date+months(1+apt_lease_mths))
+valuefloor=cumicf[fsdates]
+valuefloor[!index(valuefloor) %within% value_add_interval]=0
+#create an ebitda for capitalization
+opcf=cash_obj[,c("Revenue","OpEx")]
+opcf=xts(rowSums(opcf,na.rm=TRUE),index(opcf))
+ep=endpoints(opcf,"months")
+opcf=period.apply(opcf,ep,sum)
+opcf_roll12=rollapply(opcf,width=12,FUN=sum,align="left")
+opcf_roll12=na.locf(opcf_roll12)
+caprate=filter(specscap,name=="Cap_rate")$pct_per_year
+deltacap=filter(specscap,name=="Cap_rate")$trend_delta_per_year
+caprate=caprate+cumsum(c(0,rep(deltacap/12,model_length-1)))
+caprate=xts(caprate,fsdates)
+incomevalue=xts(pmax(0,opcf_roll12/caprate),fsdates)
+aptvalue=pmax(incomevalue,valuefloor)
+#calculate deferred maintenance
+capex=cash_obj[,"CapEx"]
+capex[is.na(capex)]=0
+cumcapex=-cumsum(capex)
+cumcapex=cumcapex[fsdates]
+reserves=xts(c(rep(0,months_so_far),
+               rep(sum(capex)/months_to_go,months_to_go)),fsdates)
+reserves=cumsum(reserves)
+defdmaintenance=reserves+cumcapex
+#fairvalue calc
+fairvalue=aptvalue+defdmaintenance+cashbal
 
+#permanent loan
+
+pl_date=tail(index(draw[draw!=0]),1)
+pl_interval=interval(pl_date,end_date)
+LTV=filter(specspl,name=="LTV")$pct
+pl_costpct=filter(specspl,name=="cost_and_fee")$pct
+stablevalue=coredata(aptvalue[pl_date+months(12)])
+pl_loanamt=LTV*stablevalue
+pl_bal=xts(rep(NA,length(fsdates)),fsdates)
+pl_bal[index(pl_bal)<pl_date]=0
+pl_bal[pl_date]=pl_loanamt
+pl_bal=na.locf(pl_bal)       
+pl_cost=xts(pl_loanamt*pl_costpct,pl_date)
+pl_interest=pl_intrate*pl_bal
+pl_proceeds=xts(pl_loanamt,pl_date)
+Permanent_loan=list(pl_balance=pl_bal,pl_interest=pl_interest,
+                    pl_cost=plcost,pl_proceeds=pl_proceeds)
