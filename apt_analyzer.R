@@ -6,6 +6,14 @@ library(xts)
 library(timetk)
 #library(asrsMethods)
 
+#xts convenience function
+mergesum.xts=function(x) {
+  x=do.call(merge,x)
+  idx=index(x)
+  xsum=rowSums(x,na.rm=TRUE)
+  xts(xsum,idx)
+}
+
 # read the configuration 
 apt_sheets=excel_sheets("modera_decatur.xlsx")
 
@@ -109,7 +117,7 @@ Revenue=list(apt_rent=apt_rent,com_rent=com_rent,other_rev=other_rev)
 specs=apt_config[["Expense"]]
 specscap=apt_config[["CapMarkets"]]
 cpi=filter(specscap,name=="cpi")$pct_per_year
-expense_sensitivity=1+filter(specs,name="expense_sensitivity")$pct
+expense_sensitivity=1+filter(specs,name=="expense_sensitivity")$pct
 Expense=list()
 expnames=vector()
 for(i in 1:nrow(specs)) {
@@ -145,4 +153,39 @@ for(i in 1:nrow(specs)) {
 }
 Expense=set_names(Expense,expnames)
 
+# Cap Ex
 
+CapEx=list()
+capexnames=vector()
+specs=apt_config[["CapEx"]]
+specs=mutate(specs,v_per_mth=Value/n_month_constr)
+ytg=floor(months_to_go/12)
+for(i in 1:nrow(specs)) {
+  life_yr=specs$n_year_life[i]
+  constr_mth=specs$n_month_constr[i]
+  v_per_mth=specs$v_per_mth[i]
+  incr=eval(parse(text=specs$Increase[i]))
+  nproj=floor(ytg/life_yr)
+  if(nproj==0) next(i)
+  projdate=CofO_date+years(life_yr*(1:nproj))
+  projdateym=projdate
+  for (j in 1:(constr_mth-1)) {
+    projdateym=c(projdateym,projdate+months(j))
+  }
+  projdateym=sort(projdateym)
+  incr=exp(cumsum(rep(log(1+incr/12),model_length)))
+  incr=xts(incr,total_time_index)
+  tempxts=incr[projdateym]*v_per_mth
+  CapEx=c(CapEx,list(tempxts))
+  capexnames=c(capexnames,specs$name[i])
+}
+CapEx=set_names(CapEx,capexnames)
+
+cash_obj=merge(mergesum.xts(Revenue),
+               -mergesum.xts(predevelopment),
+               -mergesum.xts(construction),
+               -mergesum.xts(Expense),
+               -mergesum.xts(CapEx))
+cash_obj=cbind(cash_obj,rowSums(cash_obj,na.rm=TRUE))
+colnames(cash_obj)=c("Revenue","Predevelopment","Construction","OpEx","CapEx","Unlv_CF")
+               
