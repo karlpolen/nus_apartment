@@ -33,7 +33,7 @@ specs=apt_config[["Predevelopment"]]
 delay=filter(specs,name=="Delay")$n_month
 specs=mutate(specs,rev_end_month=end_month+delay)
 monthsdur=max(specs$rev_end_month,na.rm=TRUE)
-time_index=filter(specs,name=="Start_date")$date+
+time_index=as.Date(filter(specs,name=="Start_date")$date)+
   months(0:(-1+monthsdur))
 Start_date=time_index[1]
 total_time_index=Start_date+months(0:(model_length-1))
@@ -331,6 +331,7 @@ reserves=cumsum(reserves)
 defdmaintenance=reserves+cumcapex
 #fairvalue calc
 fairvalue=aptvalue+defdmaintenance+cashbal
+fv=list(aptvalue,defdmaintenance,cashbal,fairvalue)
 
 #permanent loan
 
@@ -447,3 +448,9 @@ for(i in 2:length(fv.d)) {
 hlbv_tier_investor=xts(hlbv_tier_investor,fv.t)
 hlbv_tier_sponsor=xts(hlbv_tier_sponsor,fv.t)
 
+equity_structure=list(cf_tier,promote_tier,hlbv_tier_investor,hlbv_tier_sponsor)
+
+
+
+ans=list(predevelopment,construction,Revenue,Expense,wc,Construction_loan,fv,
+         Permanent_loan,am_fee,equity_structure)
