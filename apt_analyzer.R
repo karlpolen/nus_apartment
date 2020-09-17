@@ -6,13 +6,39 @@ library(xts)
 library(timetk)
 library(asrsMethods)
 
-#xts convenience function
+#xts convenience functions
+
+#create a sum for a list of cfs
 mergesum.xts=function(x) {
   x=do.call(cbind,x)
   idx=index(x)
   xsum=rowSums(x,na.rm=TRUE)
   xts(xsum,idx)
 }
+
+#convert a list to a matrix with or without a total
+ltomat.xts=function(x,wtotal=TRUE,tname="Total") {
+  mname=names(x)
+  x=do.call(cbind,x)
+  if(wtotal) {
+    idx=index(x)
+    xsum=rowSums(x,na.rm=TRUE)
+    x=cbind(x,xts(xsum,idx))
+    mname=c(mname,tname)
+  }
+  names(x)=mname
+  return(x)
+}
+
+#get rowSums of xts matrix as xts object
+totmat=function(x) {
+  idx=index(x)
+  x=rowSums(x,na.rm=TRUE)
+  xts(x,idx)
+}  
+  
+
+
 
 # read the configuration 
 apt_sheets=excel_sheets("modera_decatur.xlsx")
@@ -200,6 +226,7 @@ cashbal=pmax(cashbal,cashbalmin)
 wc_change=diff(cashbal)
 wc_change[1]=cashbal[1]
 wc=list(wc_change,cashbal)
+names(wc)=c("wc_change","cashbal")
 
 
 
@@ -289,22 +316,28 @@ for(i in 2:length(cf)) {
 residcf=cf.d-interest+draw
 residcf=xts(residcf,cf.t)
 interest=xts(interest,cf.t)
+constr_interest=interest[index(interest)<=CofO_date]
+post_constr_interest=interest[index(interest)>CofO_date]
 draw=xts(draw,cf.t)
 loanbal=xts(loanbal,cf.t)
 loanbal=loanbal[fsdates]
 
-Construction_loan=list(loanbal=loanbal,interest=interest,draw=draw,residcf=residcf)
+Construction_loan=list(loanbal=loanbal,interest=interest,
+                       constr_interest=constr_interest,
+                       post_constr_interest=post_constr_interest,
+                       draw=draw,residcf=residcf)
+
 
 #Valuation
 #set value through stabilization as greater of cost or current ebitda/caprate
 #after stabilization, drop the cost floor
 
 #create an investment cash flow to accumulate cost on fsdates including cl interest
-icf=cash_obj[,c("Predevelopment","Construction")]
-icf=cbind(-icf,Construction_loan[["interest"]])
+icf=cash_obj[,c("Predevelopment","Construction","CapEx")]
+icf=cbind(-icf,Construction_loan[["constr_interest"]])
 icf=xts(rowSums(icf,na.rm=TRUE),index(icf))
 cumicf=cumsum(icf)
-value_add_interval=interval(Start_date,CofO_date+months(1+apt_lease_mths))
+value_add_interval=interval(Start_date,CofO_date+months(1+com_lease_mths))
 valuefloor=cumicf[fsdates]
 valuefloor[!index(valuefloor) %within% value_add_interval]=0
 #create an ebitda for capitalization
@@ -312,8 +345,8 @@ opcf=cash_obj[,c("Revenue","OpEx")]
 opcf=xts(rowSums(opcf,na.rm=TRUE),index(opcf))
 ep=endpoints(opcf,"months")
 opcf=period.apply(opcf,ep,sum)
-opcf_roll12=rollapply(opcf,width=12,FUN=sum,align="left")
-opcf_roll12=na.locf(opcf_roll12)
+opcf_roll12=rollapply(opcf,width=12,FUN=sum,align="right")
+opcf_roll12[1:11]=0
 caprate=filter(specscap,name=="Cap_rate")$pct_per_year
 deltacap=filter(specscap,name=="Cap_rate")$trend_delta_per_year
 caprate=caprate+cumsum(c(0,rep(deltacap/12,model_length-1)))
@@ -331,7 +364,12 @@ reserves=cumsum(reserves)
 defdmaintenance=reserves+cumcapex
 #fairvalue calc
 fairvalue=aptvalue+defdmaintenance+cashbal
-fv=list(aptvalue,defdmaintenance,cashbal,fairvalue)
+#gain in fairvalue
+fvgain=aptvalue+defdmaintenance-cumicf[fsdates]
+fvgain=diff(fvgain)
+fvgain[1]=0
+fv=list(aptvalue,defdmaintenance,cashbal,fairvalue,fvgain)
+names(fv)=c("Apt_Value","Defd_Maint","Cash_bal","Total_FV","FV_gain")
 
 #permanent loan
 
@@ -340,7 +378,7 @@ pl_interval=interval(pl_date,end_date)
 LTV=filter(specspl,name=="LTV")$pct
 pl_intrate=filter(specscap,name=="Perm_loan_rate")$pct_per_year
 pl_costpct=filter(specspl,name=="cost_and_fee")$pct
-stablevalue=coredata(aptvalue[pl_date+months(12)])
+stablevalue=coredata(aptvalue[pl_date+days(1)+months(18)-days(1)])
 pl_loanamt=LTV*stablevalue
 pl_bal=xts(rep(NA,length(fsdates)),fsdates)
 pl_bal[index(pl_bal)<pl_date]=0
@@ -355,7 +393,7 @@ Permanent_loan=list(pl_balance=pl_bal,pl_interest=pl_interest,
 #assemble levered cash flow
 levcf_obj=merge(cash_obj[,"Unlv_CF"],
            -Construction_loan[["interest"]],
-           Construction_loan[["draw"]]-Construction_loan[["interest"]],
+           Construction_loan[["draw"]],#-Construction_loan[["interest"]],
            -pl_interest,
            pl_proceeds-pl_cost)
 levcf_obj=cbind(levcf_obj,rowSums(levcf_obj,na.rm=TRUE))
@@ -381,7 +419,7 @@ am_fee=invest_equity_feebase*amfeepct/4
 #adjust levcf to include amfee
 levcf_obj=merge(cash_obj[,"Unlv_CF"],
                 -Construction_loan[["interest"]],
-                Construction_loan[["draw"]]-Construction_loan[["interest"]],
+                Construction_loan[["draw"]],#-Construction_loan[["interest"]],
                 -pl_interest,
                 pl_proceeds-pl_cost,
                 am_fee)
@@ -450,7 +488,83 @@ hlbv_tier_sponsor=xts(hlbv_tier_sponsor,fv.t)
 
 equity_structure=list(cf_tier,promote_tier,hlbv_tier_investor,hlbv_tier_sponsor)
 
+#build financial statements
 
 
-ans=list(predevelopment,construction,Revenue,Expense,wc,Construction_loan,fv,
-         Permanent_loan,am_fee,equity_structure)
+#balance sheet
+prop_val=aptvalue+defdmaintenance
+inv_eq=totmat(hlbv_tier_investor)
+spons_eq=totmat(hlbv_tier_sponsor)
+bslist=list(cashbal,
+            prop_val,
+            Construction_loan[["loanbal"]],
+            Permanent_loan[["pl_balance"]],
+            inv_eq,
+            spons_eq)
+names(bslist)=c("Cash","Property_fv","Constr_loan","Perm_loan","Investor_Equity",
+                "Sponsor_Equity")
+
+
+
+#cash flow
+cflist=list(mergesum.xts(Revenue),
+            -mergesum.xts(Expense),
+            -Construction_loan[["post_constr_interest"]],
+            am_fee,
+            -Permanent_loan[["pl_interest"]],
+            -Permanent_loan[["pl_cost"]],
+            -wc[["wc_change"]],
+            -Construction_loan[["constr_interest"]],
+            Construction_loan[["draw"]],
+            Permanent_loan[["pl_proceeds"]],
+            -mergesum.xts(predevelopment),
+            -mergesum.xts(construction),
+            -mergesum.xts(CapEx)
+            )
+names(cflist)=c(paste("Operating",c("Revenue","Expense",
+                                    "CL_Interest","AM_Fee",
+                                    "PL_Interest","PL_Fee","WC_Change")),
+                paste("Financing",c("CL_interest","Constr_Draws","PL_Proceeds")),
+                paste("Investing",c("Predevelopment","Construction","CapEx")))
+
+#income statement
+islist=cflist[1:6]
+islist=c(islist,list(fvgain))
+names(islist)=c("Revenue","Expense",
+                 "CL_Interest","AM_Fee",
+                 "PL_Interest","PL_Fee","FV_gain")
+  
+#build objects for analysis
+
+
+#cfs and navs
+inv_cf=totmat(cf_tier)
+analist=list(cash_obj[,"Unlv_CF"],
+             levcf,
+             inv_cf,
+             fv[["Total_FV"]],
+             inv_eq+spons_eq,
+             inv_eq
+             )
+names(analist)=c("Unlev_CF","Lev_CF","Investor_CF","Unl_FV","Lev_FV","Inv_FV")
+  
+#fees
+feelist=list(am_fee,
+             totmat(promote_tier),
+             spons_eq)
+names(feelist)=c("AM_Fee","Promote_paid","Promote_HLBV")  
+  
+
+ans=list(apt_sheets,
+         apt_config,
+         predevelopment,
+         construction,
+         Revenue,
+         Expense,
+         wc,
+         bslist,
+         islist,
+         cflist,
+         analist,
+         feelist)
+
