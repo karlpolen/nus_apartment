@@ -4,7 +4,7 @@ library(purrr)
 library(lubridate)
 library(xts)
 library(timetk)
-#library(asrsMethods)
+library(asrsMethods)
 
 #xts convenience function
 mergesum.xts=function(x) {
@@ -377,7 +377,73 @@ ep=endpoints(invest_equity,"quarters")
 invest_equity_feebase=period.apply(invest_equity,ep,mean)
 am_fee=invest_equity_feebase*amfeepct/4
 
+#adjust levcf to include amfee
+levcf_obj=merge(cash_obj[,"Unlv_CF"],
+                -Construction_loan[["interest"]],
+                Construction_loan[["draw"]]-Construction_loan[["interest"]],
+                -pl_interest,
+                pl_proceeds-pl_cost,
+                am_fee)
+levcf_obj=cbind(levcf_obj,rowSums(levcf_obj,na.rm=TRUE))
+names(levcf_obj)=c("Unlv_CF","CL_Interest","CL_Proceeds",
+                   "PL_Interest","PL_Proceeds","AM_Fee","Lev_CF")
+
 #calculate promote 
 #promote calculations compound at every cash flow date to simplify a little
+eq_levels=nrow(specswf)
+hurdle=specswf$hurdle
+promote=c(0,specswf$promote)
+keep=1-promote
+levcf=levcf_obj[,"Lev_CF"]
+levcf.d=coredata(levcf)
+levcf.t=index(levcf)
+ncf=length(levcf)
+hurdlebal=matrix(0,nrow=ncf,ncol=eq_levels)
+cf_tier=matrix(0,nrow=ncf,ncol=1+eq_levels)
+promote_tier=cf_tier
+nval=length(fairvalue)
+hlbv_tier_investor=matrix(0,nrow=nval,ncol=eq_levels+1)
+hlbv_tier_sponsor=hlbv_tier_investor
+hurdlebal[1,]=-levcf[1]
+cf_tier[1,1]=levcf[1]
+ndays=c(0,diff(index(levcf)))
+#allocate cash
+for(i in 2:length(levcf)) {
+  cashleft=coredata(levcf[i])
+  hurdlebal[i,]=hurdlebal[i-1,]*(1+(hurdle*ndays[i]/365))
+  if(cashleft<=0) {
+    hurdlebal[i,]=hurdlebal[i,]-cashleft
+    cf_tier[i,1]=cashleft
+  } else {
+    ladder=diff(c(0,hurdlebal[i,]))*(1/keep[1:eq_levels])
+    splitcash=wf(ladder,cashleft)
+    cf_tier[i,]=splitcash*keep
+    promote_tier[i,]=splitcash*promote
+    hurdlebal[i,]=hurdlebal[i,]-(splitcash*keep)[1:eq_levels]
+  }
+}
+hurdlebal=xts(hurdlebal,levcf.t)
+cf_tier=xts(cf_tier,levcf.t)
+promote_tier=xts(promote_tier,levcf.t)
+#
+#calculate hypothetical liquidation
+fvequity=fairvalue-Permanent_loan[["pl_balance"]]-Construction_loan[["loanbal"]]
+fv.d=coredata(fvequity)
+fv.t=index(fvequity)
+hurdlebal_v=hurdlebal[fv.t]
+hlbv_tier_investor[1,1]=fv.d[1]
+for(i in 2:length(fv.d)) {
+  cashleft=fv.d[i]
+  if(cashleft<=0) {
+    hlbv_tier_investor[i,1]=cashleft
+  } else {
+    ladder=diff(c(0,hurdlebal_v[i,]))*(1/keep[1:eq_levels])
+    splitcash=wf(ladder,cashleft)
+    hlbv_tier_investor[i,]=splitcash*keep
+    hlbv_tier_sponsor[i,]=splitcash*promote
+    }
+}
 
+hlbv_tier_investor=xts(hlbv_tier_investor,fv.t)
+hlbv_tier_sponsor=xts(hlbv_tier_sponsor,fv.t)
 
