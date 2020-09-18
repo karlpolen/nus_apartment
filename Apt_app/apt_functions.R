@@ -15,7 +15,7 @@ nona=function(x) {
 }  
 
 #convert a list to a matrix with or without a total
-ltomat.xts=function(x,wtotal=TRUE,tname="Total") {
+ltomat.xts=function(x,wtotal=TRUE,tname="Total",donona=TRUE) {
   mname=names(x)
   x=do.call(cbind,x)
   if(wtotal) {
@@ -25,7 +25,10 @@ ltomat.xts=function(x,wtotal=TRUE,tname="Total") {
     mname=c(mname,tname)
   }
   names(x)=mname
-  apply(x,2,nona)
+  if(donona) {
+    x=apply(x,2,nona)
+  }
+  return(x)
 }
 
 #get rowSums of xts matrix as xts object
@@ -54,7 +57,21 @@ ltodfyear=function(x,total=TRUE,tname="Total",roundthou=FALSE,isbs=FALSE) {
   is_df
 }
 
+xtodf=function(x,name="Data") {
+  x=as.data.frame(x)
+  x=data.frame(as.Date(rownames(x)),x)
+  colnames(x)=c("Date",name)
+  rownames(x)=NULL
+  return(x)
+}
 
+ltodf=function(x,wtotal=FALSE,tname="Total",donona=FALSE) {
+  x=ltomat.xts(x,wtotal=wtotal,donona=donona)
+  x=as.data.frame(x)
+  x=data.frame(Date=as.Date(rownames(x)),x)
+  rownames(x)=NULL
+  return(x)
+}
 read_config = function(file_path) {
   apt_sheets=excel_sheets("modera_decatur.xlsx")
   apt_config=apt_sheets %>%
@@ -72,6 +89,42 @@ w_f=function (stack, cash)
   x = x + stack
   x[x < 0] = 0
   c(x, cash - sum(x))
+}
+
+#IRR convenience functions
+makecf=function(cf,val,beg_date=NULL,end_date) {
+  if(is.null(beg_date)) {
+    cf=cf[index(cf)<=end_date]
+    val=val[end_date]
+  } else {
+    cf=cf[index(cf)<=end_date]
+    cf=cf[index(cf)>=beg_date]
+    val=val[c(beg_date,end_date)]
+    val[1]=-1*val[1]
+  }
+  mergesum.xts(list(cf,val))
+  
+}
+
+evolution_irr=function(cf,nav) {
+  irrvec=0
+  for (i in 2:length(nav)){
+    cfi=makecf(cf,nav,end_date=(index(nav))[i])
+    irrvec[i]=irr.z(cfi)
+  }
+  irrvec=xts(irrvec,index(nav))
+  return(irrvec)
+}
+
+rolling_irr=function(cf,nav,width) {
+  irrvec=vector()
+  valdates=index(nav)
+  for (i in (1+width):length(nav)) {
+    cfi=makecf(cf,nav,valdates[i-width],valdates[i])
+    irrvec[i-width]=irr.z(cfi)
+  }
+  irrvec=xts(irrvec,index(nav)[-(1:width)])
+  return(irrvec)
 }
 
 

@@ -19,6 +19,7 @@ library(asrsMethods)
 library(knitr)
 library(DT)
 library(leaflet)
+library(plotly)
 source("apt_functions.r")
 
 
@@ -35,7 +36,12 @@ ui <- dashboardPage(
     dashboardBody(
         tabBox(
             width=12,
-        tabPanel("Map",leafletOutput("map")),    
+            tabPanel("Map",leafletOutput("map")), 
+            tabPanel("Financial Analysis",
+                     plotlyOutput("plot_irrs"),
+                     plotlyOutput("plot_3yr"),
+                     plotlyOutput("plot_cumcf")
+            ),
         tabPanel("Income Statement",DT::DTOutput("is")),
         tabPanel("Balance Sheet",DT::DTOutput("bs")),
         tabPanel("Cash Flow",DT::DTOutput("cf"))
@@ -75,6 +81,46 @@ server <- function(input, output,session) {
     output$cf=DT::renderDT({
         cf_list=ans()$sumcflist
         ltodfyear(cf_list,total=TRUE,tname="Net_CF",roundthou=TRUE)
+    })
+    output$plot_irrs=renderPlotly({
+        analist=ans()$analist
+        x=evolution_irr(analist$Investor_CF,analist$Inv_FV)
+        y=evolution_irr(analist$Unlev_CF,analist$Unl_FV)
+        z=evolution_irr(analist$Lev_CF,analist$Lev_FV)
+        irrlist=list(z,x,y)
+        names(irrlist)=c("Project_IRR","Investor_IRR","Unlevered_IRR")
+        irrdf=ltodf(irrlist)
+        irrdf=gather(irrdf,key="type",value="IRR",-Date)
+        plot=ggplot(irrdf,aes(x=Date,y=IRR,col=type))+
+            geom_line()+
+            ggtitle("Inception IRRs")
+        ggplotly(plot)
+    })
+    output$plot_3yr=renderPlotly({
+        analist=ans()$analist
+        x=rolling_irr(analist$Investor_CF,analist$Inv_FV,36)
+        y=rolling_irr(analist$Unlev_CF,analist$Unl_FV,36)
+        z=rolling_irr(analist$Lev_CF,analist$Lev_FV,36)
+        irrlist=list(z,x,y)
+        names(irrlist)=c("Project_IRR","Investor_IRR","Unlevered_IRR")
+        irrdf=ltodf(irrlist)
+        irrdf=gather(irrdf,key="type",value="IRR",-Date)
+        plot=ggplot(irrdf,aes(x=Date,y=IRR,col=type))+
+            geom_line()+
+            ggtitle("Rolling 3 Yr IRRs")
+        ggplotly(plot)
+    })
+    output$plot_cumcf=renderPlotly({
+        analist=ans()$analist
+        lcumcf=list(-1*cumsum(analist$Investor_CF),analist$Inv_FV)
+        names(lcumcf)=c("Invstr_Cum_CF","Invstr_NAV")
+        cumcfdf=ltodf(lcumcf,wtotal=FALSE,donona=FALSE)
+        cumcfdfg=gather(cumcfdf,key="type",value="Dollars",-Date)
+        cumcfdfg=filter(cumcfdfg,!is.na(Dollars))
+        plot=ggplot(cumcfdfg,aes(x=Date,y=Dollars,col=type))+
+            geom_line()+
+            ggtitle("Investor Cumulative CF and NAV")
+        ggplotly(plot)
     })
     output$map=renderLeaflet({
         apt_config=ans()$apt_config
