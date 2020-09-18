@@ -9,6 +9,7 @@ mergesum.xts=function(x) {
   xts(xsum,idx)
 }
 
+# get rid of NAs in a vector
 nona=function(x) {
   x[is.na(x)]=0
   return(x)
@@ -57,6 +58,7 @@ ltodfyear=function(x,total=TRUE,tname="Total",roundthou=FALSE,isbs=FALSE) {
   is_df
 }
 
+#convert univariate xts to DF
 xtodf=function(x,name="Data") {
   x=as.data.frame(x)
   x=data.frame(as.Date(rownames(x)),x)
@@ -65,6 +67,7 @@ xtodf=function(x,name="Data") {
   return(x)
 }
 
+#convert list to DF
 ltodf=function(x,wtotal=FALSE,tname="Total",donona=FALSE) {
   x=ltomat.xts(x,wtotal=wtotal,donona=donona)
   x=as.data.frame(x)
@@ -72,6 +75,16 @@ ltodf=function(x,wtotal=FALSE,tname="Total",donona=FALSE) {
   rownames(x)=NULL
   return(x)
 }
+
+#convert xts matrix to DF
+mtodf=function(x) {
+  x=as.data.frame(x)
+  x=data.frame(Date=as.Date(rownames(x)),x)
+  rownames(x)=NULL
+  return(x)
+}
+
+#read an apartment configuration Excel file
 read_config = function(file_path) {
   apt_sheets=excel_sheets("modera_decatur.xlsx")
   apt_config=apt_sheets %>%
@@ -80,6 +93,7 @@ read_config = function(file_path) {
   apt_config=set_names(apt_config,apt_sheets)
   return(apt_config)
 }
+
 #simple waterfall allocator
 w_f=function (stack, cash) 
 {
@@ -125,6 +139,37 @@ rolling_irr=function(cf,nav,width) {
   }
   irrvec=xts(irrvec,index(nav)[-(1:width)])
   return(irrvec)
+}
+
+#function to manipulate feelist into fee analysis datafram
+makefeedf=function(feelist) {
+  totalexcess=ltomat.xts(list(cumsum(feelist$Excess_CF),
+                              cumsum(-feelist$AM_Fee),
+                              cumsum(feelist$Promote_paid),
+                              feelist$Excess_HLBV,
+                              feelist$Promote_HLBV),
+                         wtotal=FALSE,donona=FALSE)
+  totalexcess[,2]=na.locf(totalexcess[,2])
+  totalexcess[,2]=nona(totalexcess[,2])
+  totalexcess[,4]=na.locf(totalexcess[,4])
+  totalexcess[,4]=nona(totalexcess[,4])
+  totalexcess[,5]=na.locf(totalexcess[,5])
+  totalexcess[,5]=nona(totalexcess[,5])
+  Total_Excess=totmat(totalexcess)
+  
+  feemat=ltomat.xts(list(cumsum(-feelist$AM_Fee),
+                         cumsum(feelist$Promote_paid),
+                         feelist$Promote_HLBV),
+                    wtotal=FALSE,donona=FALSE)
+  feemat[,1]=nona(na.locf(feemat[,1]))
+  feemat[,3]=na.locf(feemat[,3])
+  feemat[,3]=nona(feemat[,3])
+  feemat=data.frame(feemat,Total_Fee=totmat(feemat))
+  feemat=cbind(feemat,Total_Excess)
+  colnames(feemat)=c("AM_Fee","Promote_cash","Promote_Accrued","Total_Fee","Total_Excess")
+  feedf=mtodf(feemat)
+  feedf=mutate(feedf,Fee_pct_of_Excess=Total_Fee/(Total_Excess+.1))
+  return(feedf)
 }
 
 
@@ -642,10 +687,14 @@ analist=list(cash_obj[,"Unlv_CF"],
 names(analist)=c("Unlev_CF","Lev_CF","Investor_CF","Unl_FV","Lev_FV","Inv_FV")
   
 #fees
+excess_cf=totmat(cf_tier[,-1])
+excess_val=totmat(hlbv_tier_investor[,-1])
 feelist=list(am_fee,
+             excess_cf,
+             excess_val,
              totmat(promote_tier),
              spons_eq)
-names(feelist)=c("AM_Fee","Promote_paid","Promote_HLBV")  
+names(feelist)=c("AM_Fee","Excess_CF","Excess_HLBV","Promote_paid","Promote_HLBV")  
   
 
 ans=list(apt_config=apt_config,

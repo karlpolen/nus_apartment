@@ -1,11 +1,12 @@
 #
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
+#Apartment analyzer app by Karl Polen
 #
-# Find out more about building applications with Shiny here:
+# This app uses functions in the asrsMethods package
+# which can be installed by uncommenting the following code
+#devtools::install_github("karlp-asrs/asrsMethods/asrsMethods")
 #
-#    http://shiny.rstudio.com/
-#
+
+
 
 library(shiny)
 library(shinydashboard)
@@ -42,6 +43,9 @@ ui <- dashboardPage(
                      plotlyOutput("plot_3yr"),
                      plotlyOutput("plot_cumcf")
             ),
+            tabPanel("Fee Analysis",
+                     plotlyOutput("plot_fee"),
+                     plotlyOutput("plot_feepct")),
         tabPanel("Income Statement",DT::DTOutput("is")),
         tabPanel("Balance Sheet",DT::DTOutput("bs")),
         tabPanel("Cash Flow",DT::DTOutput("cf"))
@@ -120,6 +124,28 @@ server <- function(input, output,session) {
         plot=ggplot(cumcfdfg,aes(x=Date,y=Dollars,col=type))+
             geom_line()+
             ggtitle("Investor Cumulative CF and NAV")
+        ggplotly(plot)
+    })
+    output$plot_fee=renderPlotly({
+        feelist=ans()$feelist
+        feedf=makefeedf(feelist)
+        plotdat=feedf %>%
+            select(Date,Total_Fee,Total_Excess) %>%
+            gather(key="type",value="Dollars",-Date) 
+        plot=ggplot(plotdat,aes(x=Date,y=Dollars,col=type))+
+            geom_line()+
+            ggtitle("Fees and cumulative profit above 1st tier hurdle")
+        ggplotly(plot)
+        
+    })
+    output$plot_feepct=renderPlotly({
+        feelist=ans()$feelist
+        feedf=makefeedf(feelist)
+        plotdat=feedf %>%
+            select(Date,Fee_pct_of_Excess)
+        plot=ggplot(plotdat,aes(x=Date,y=Fee_pct_of_Excess)) +
+            geom_line()+
+            ggtitle("Fees as % of profit above 1st tier hurdle") 
         ggplotly(plot)
     })
     output$map=renderLeaflet({
