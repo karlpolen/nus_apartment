@@ -1,10 +1,3 @@
-library(tidyverse)
-library(readxl)
-library(purrr)
-library(lubridate)
-library(xts)
-library(timetk)
-library(asrsMethods)
 
 #xts convenience functions
 
@@ -15,6 +8,11 @@ mergesum.xts=function(x) {
   xsum=rowSums(x,na.rm=TRUE)
   xts(xsum,idx)
 }
+
+nona=function(x) {
+  x[is.na(x)]=0
+  return(x)
+}  
 
 #convert a list to a matrix with or without a total
 ltomat.xts=function(x,wtotal=TRUE,tname="Total") {
@@ -27,7 +25,7 @@ ltomat.xts=function(x,wtotal=TRUE,tname="Total") {
     mname=c(mname,tname)
   }
   names(x)=mname
-  return(x)
+  apply(x,2,nona)
 }
 
 #get rowSums of xts matrix as xts object
@@ -36,18 +34,50 @@ totmat=function(x) {
   x=rowSums(x,na.rm=TRUE)
   xts(x,idx)
 }  
-  
+
+#convert list to data frame by year
+ltodfyear=function(x,total=TRUE,tname="Total",roundthou=FALSE,isbs=FALSE) {
+  is_mat=ltomat.xts(x,total,tname)
+  is_df=as.data.frame(is_mat)
+  is_df=data.frame(Date=as.Date(rownames(is_df)),is_df)
+  rownames(is_df)=NULL
+  is_df=data.frame(Year=year((is_df)$Date),is_df)
+  is_df$Date=NULL
+  if(isbs) {
+    is_df=aggregate(is_df,b=list(is_df$Year),FUN=lastinvec)
+  } else {
+    is_df=aggregate(is_df,by=list(is_df$Year),FUN=sum)
+  }
+  is_df$Year=is_df$Group.1
+  is_df$Group.1=NULL
+  if (roundthou) is_df[,-1]=round(is_df[,-1]/1000)
+  is_df
+}
 
 
+read_config = function(file_path) {
+  apt_sheets=excel_sheets("modera_decatur.xlsx")
+  apt_config=apt_sheets %>%
+    as.list() %>%
+    map(~read_excel("modera_decatur.xlsx",sheet=.x))
+  apt_config=set_names(apt_config,apt_sheets)
+  return(apt_config)
+}
+#simple waterfall allocator
+w_f=function (stack, cash) 
+{
+  if (cash<=0) return(c(cash,rep(0,length(stack))))
+  x = rep(cash,length(stack)) - cumsum(stack)
+  x[x > 0] = 0
+  x = x + stack
+  x[x < 0] = 0
+  c(x, cash - sum(x))
+}
 
-# read the configuration 
-apt_sheets=excel_sheets("modera_decatur.xlsx")
 
-apt_config=apt_sheets %>%
-  as.list() %>%
-  map(~read_excel("modera_decatur.xlsx",sheet=.x))
+#apartment analyzer function
 
-apt_config=set_names(apt_config,apt_sheets)      
+apt_analyzer=function(apt_config) {
 specsid=apt_config[["Identification"]]
 model_length=filter(specsid,name=="model_length")$n_month
 
@@ -298,7 +328,7 @@ for(i in 2:length(cf)) {
   }
   draw[i]=min(draw[i],max_draw_i)
   draw[i]=max(draw[i],min_draw_i)
-  print(paste(cf.t[i],"draw =",draw[i],"intpayable=",intpayable,"accrint",accrint))
+  #print(paste(cf.t[i],"draw =",draw[i],"intpayable=",intpayable,"accrint",accrint))
   if (draw[i]<0) {
     draw_int=max(draw[i],-accrint)
     draw_prin=draw[i]-draw_int
@@ -451,11 +481,11 @@ for(i in 2:length(levcf)) {
   cashleft=coredata(levcf[i])
   hurdlebal[i,]=hurdlebal[i-1,]*(1+(hurdle*ndays[i]/365))
   if(cashleft<=0) {
-    hurdlebal[i,]=hurdlebal[i,]-cashleft
+    hurdlebal[i,]=hurdlebal[i,]-rep(cashleft,eq_levels)
     cf_tier[i,1]=cashleft
   } else {
     ladder=diff(c(0,hurdlebal[i,]))*(1/keep[1:eq_levels])
-    splitcash=wf(ladder,cashleft)
+    splitcash=w_f(ladder,cashleft)
     cf_tier[i,]=splitcash*keep
     promote_tier[i,]=splitcash*promote
     hurdlebal[i,]=hurdlebal[i,]-(splitcash*keep)[1:eq_levels]
@@ -477,7 +507,7 @@ for(i in 2:length(fv.d)) {
     hlbv_tier_investor[i,1]=cashleft
   } else {
     ladder=diff(c(0,hurdlebal_v[i,]))*(1/keep[1:eq_levels])
-    splitcash=wf(ladder,cashleft)
+    splitcash=w_f(ladder,cashleft)
     hlbv_tier_investor[i,]=splitcash*keep
     hlbv_tier_sponsor[i,]=splitcash*promote
     }
@@ -527,6 +557,16 @@ names(cflist)=c(paste("Operating",c("Revenue","Expense",
                 paste("Financing",c("CL_interest","Constr_Draws","PL_Proceeds")),
                 paste("Investing",c("Predevelopment","Construction","CapEx")))
 
+sumcf=list(mergesum.xts(cflist[1:7]),
+           mergesum.xts(cflist[8:9]),
+           cflist[[10]],
+           cflist[[11]],
+           cflist[[12]],
+           cflist[[13]]
+           )
+names(sumcf)=c("Operations","Constr_Loan","Perm_Loan",
+               "Predevlpmt","Construction","CapEx")
+
 #income statement
 islist=cflist[1:6]
 islist=c(islist,list(fvgain))
@@ -555,21 +595,17 @@ feelist=list(am_fee,
 names(feelist)=c("AM_Fee","Promote_paid","Promote_HLBV")  
   
 
-ans=list(apt_sheets,
-         apt_config,
-         predevelopment,
-         construction,
-         Revenue,
-         Expense,
-         wc,
-         bslist,
-         islist,
-         cflist,
-         analist,
-         feelist)
-
-
-
-
-
-
+ans=list(apt_config=apt_config,
+         predevelopment=predevelopment,
+         construction=construction,
+         Revenue=Revenue,
+         Expense=Expense,
+         wc=wc,
+         bslist=bslist,
+         islist=islist,
+         cflist=cflist,
+         sumcflist=sumcf,
+         analist=analist,
+         feelist=feelist)
+return(ans)
+}
