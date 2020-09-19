@@ -24,7 +24,6 @@ library(plotly)
 source("apt_functions.r")
 
 
-# Define UI for application that draws a histogram
 ui <- dashboardPage(
     
     dashboardHeader(title = textOutput("projname")),
@@ -32,7 +31,37 @@ ui <- dashboardPage(
         selectInput(inputId="file",
                     label="Select file",
                     choices=c("modera_decatur.xlsx"),
-                    selected="modera_decatur.xlsx")
+                    selected="modera_decatur.xlsx"),
+        sliderInput(inputId="rent_sens",
+                    label="Rent Sensitivity %",
+                    min=-.1,
+                    max=.1,
+                    value=0,
+                    step=.01),
+        sliderInput(inputId="exp_sens",
+                    label="Expense Sensitivity %",
+                    min=-.1,
+                    max=.1,
+                    value=0,
+                    step=.01),
+        sliderInput(inputId="overrun",
+                    label="Construction cost overrun %",
+                    min=-.1,
+                    max=.1,
+                    value=0,
+                    step=.01),
+        sliderInput(inputId="predev_delay",
+                    label="Predevelopment delay months",
+                    min=0,
+                    max=12,
+                    value=0,
+                    step=1),
+        sliderInput(inputId="constr_delay",
+                    label="Construction delay months",
+                    min=0,
+                    max=12,
+                    value=0,
+                    step=1)
     ),
     dashboardBody(
         tabBox(
@@ -43,11 +72,17 @@ ui <- dashboardPage(
                      plotlyOutput("plot_3yr"),
                      plotlyOutput("plot_cumcf")
             ),
+            tabPanel("Promote",
+                     plotlyOutput("plot_seq"),
+                     plotlyOutput("plot_seqlog"),
+                     plotlyOutput("plot_seqpct")),
             tabPanel("Fee Analysis",
                      plotlyOutput("plot_fee"),
                      plotlyOutput("plot_feepct")),
         tabPanel("Income Statement",DT::DTOutput("is")),
-        tabPanel("Balance Sheet",DT::DTOutput("bs")),
+        tabPanel("Balance Sheet",
+                 DT::DTOutput("bs"),
+                 plotlyOutput("plot_refi")),
         tabPanel("Cash Flow",DT::DTOutput("cf"))
         )
     )
@@ -64,7 +99,12 @@ server <- function(input, output,session) {
     # )
     ans=reactive({
         apt_config=read_config(input$file)
-        apt_analyzer(apt_config)
+        apt_analyzer(apt_config,
+                     rent_sensitivity=input$rent_sens,
+                     expense_sensitivity=input$exp_sens,
+                     constr_overrun=input$overrun,
+                     predev_delay=input$predev_delay,
+                     constr_delay=input$constr_delay)
     })
     # ans=reactive({
     #     apt_analyzer(apt_config)
@@ -146,6 +186,50 @@ server <- function(input, output,session) {
         plot=ggplot(plotdat,aes(x=Date,y=Fee_pct_of_Excess)) +
             geom_line()+
             ggtitle("Fees as % of profit above 1st tier hurdle") 
+        ggplotly(plot)
+    })
+    output$plot_seq=renderPlotly({
+        bslist=ans()$bslist
+        sponsor_eq=bslist$Sponsor_Equity
+        seqdf=xtodf(sponsor_eq,name="Sponsor_Equity")
+        plot=ggplot(seqdf,aes(x=Date,y=Sponsor_Equity))+
+            geom_line()+
+            ggtitle("Sponsor Equity")
+        ggplotly(plot)
+    })
+    output$plot_seqlog=renderPlotly({
+        bslist=ans()$bslist
+        sponsor_eq=bslist$Sponsor_Equity
+        seqdf=xtodf(sponsor_eq,name="Sponsor_Equity")
+        plot=ggplot(seqdf,aes(x=Date,y=Sponsor_Equity))+
+            geom_line()+
+            ggtitle("Sponsor Equity Log Scale")+
+            scale_y_log10()
+        ggplotly(plot)
+    })
+    output$plot_seqpct=renderPlotly({
+        bslist=ans()$bslist
+        sponsor_eq=bslist$Sponsor_Equity
+        s_eq_roll12=rollapply(sponsor_eq,width=12,FUN=mean)
+        s_eq_r12_change=diff(s_eq_roll12)/s_eq_roll12
+        seqdf=xtodf(s_eq_r12_change,name="Sponsor_Eq_pct_change")
+        plot=ggplot(seqdf,aes(x=Date,y=Sponsor_Eq_pct_change))+
+            geom_line()+
+            ggtitle("Sponsor Equity Growth Rate")+
+            coord_cartesian(ylim=c(-.05,.15))
+        ggplotly(plot)
+    })
+    output$plot_refi=renderPlotly({
+        bslist=ans()$bslist
+        teq=bslist$Sponsor_Equity+bslist$Investor_Equity
+        ploan=bslist$Perm_loan
+        tidx=index(ploan[ploan>0])
+        tidx=tidx[-(1:18)]
+        refi=(2*teq[tidx])-ploan[tidx]
+        refidf=xtodf(refi,name="Refi_potential")
+        plot=ggplot(refidf,aes(x=Date,y=Refi_potential))+
+            geom_line()+
+            ggtitle("Potential proceeds from refinance")
         ggplotly(plot)
     })
     output$map=renderLeaflet({

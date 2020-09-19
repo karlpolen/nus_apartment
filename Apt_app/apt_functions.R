@@ -141,7 +141,7 @@ rolling_irr=function(cf,nav,width) {
   return(irrvec)
 }
 
-#function to manipulate feelist into fee analysis datafram
+#function to manipulate feelist into fee analysis dataframe
 makefeedf=function(feelist) {
   totalexcess=ltomat.xts(list(cumsum(feelist$Excess_CF),
                               cumsum(-feelist$AM_Fee),
@@ -175,7 +175,12 @@ makefeedf=function(feelist) {
 
 #apartment analyzer function
 
-apt_analyzer=function(apt_config) {
+apt_analyzer=function(apt_config,
+                      rent_sensitivity=0,
+                      expense_sensitivity=0,
+                      predev_delay=0,
+                      constr_delay=0,
+                      constr_overrun=0) {
 specsid=apt_config[["Identification"]]
 model_length=filter(specsid,name=="model_length")$n_month
 
@@ -184,8 +189,8 @@ model_length=filter(specsid,name=="model_length")$n_month
 #predevelopment
 predevelopment = list()
 specs=apt_config[["Predevelopment"]]
-delay=filter(specs,name=="Delay")$n_month
-specs=mutate(specs,rev_end_month=end_month+delay)
+#delay=filter(specs,name=="Delay")$n_month
+specs=mutate(specs,rev_end_month=end_month+predev_delay)
 monthsdur=max(specs$rev_end_month,na.rm=TRUE)
 time_index=as.Date(filter(specs,name=="Start_date")$date)+
   months(0:(-1+monthsdur))
@@ -211,9 +216,9 @@ permit_issued=time_index[1]+months(filter(specs,name=="Permit_issued")$rev_end_m
 #construction
 construction=list()
 specs=apt_config[["Construction"]]
-delay=filter(specs,name=="Delay")$n_month
-overrun=1+filter(specs,name=="Cost_overrun")$pct
-specs=mutate(specs,rev_end_month=end_month+delay)
+#delay=filter(specs,name=="Delay")$n_month
+overrun=1+constr_overrun  #filter(specs,name=="Cost_overrun")$pct
+specs=mutate(specs,rev_end_month=end_month+constr_delay)
 monthsdur=max(specs$rev_end_month,na.rm=TRUE)
 time_index=permit_issued+ months(1:monthsdur)
 #monthly items
@@ -239,7 +244,7 @@ CofO_date=tail(time_index,1)
 specs=apt_config[["Revenue"]]
 apt_sf=filter(specsid,name=="apt_sf")$num
 com_sf=filter(specsid,name=="com_sf")$num
-rent_sensitivity=1+filter(specs,name=="revenue_sensitivity")$pct
+rent_sensitivity=1+rent_sensitivity #filter(specs,name=="revenue_sensitivity")$pct
 specstrend=apt_config[["RentTrend"]]
 months_so_far=interval(Start_date,CofO_date) / months(1)
 months_to_go=model_length-months_so_far
@@ -271,7 +276,7 @@ Revenue=list(apt_rent=apt_rent,com_rent=com_rent,other_rev=other_rev)
 specs=apt_config[["Expense"]]
 specscap=apt_config[["CapMarkets"]]
 cpi=filter(specscap,name=="cpi")$pct_per_year
-expense_sensitivity=1+filter(specs,name=="expense_sensitivity")$pct
+expense_sensitivity=1+expense_sensitivity #filter(specs,name=="expense_sensitivity")$pct
 Expense=list()
 expnames=vector()
 for(i in 1:nrow(specs)) {
