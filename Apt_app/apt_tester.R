@@ -11,7 +11,7 @@ library(leaflet)
 library(plotly)
 
 source("apt_functions.r")
-ltoapt_config=read_config("modera_decatur.xlsx")
+apt_config=read_config("modera_decatur.xlsx")
 ans=apt_analyzer(apt_config)
 
 
@@ -19,5 +19,6 @@ ans=apt_analyzer(apt_config)
 analist=ans$analist
 feelist=ans$feelist
 
-
+eq=ans$equitystructure
+hurdle=eq$hurdlbal
   

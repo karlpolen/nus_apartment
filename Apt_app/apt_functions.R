@@ -112,7 +112,7 @@ makecf=function(cf,val,beg_date=NULL,end_date) {
     val=val[end_date]
   } else {
     cf=cf[index(cf)<=end_date]
-    cf=cf[index(cf)>=beg_date]
+    cf=cf[index(cf)>beg_date]
     val=val[c(beg_date,end_date)]
     val[1]=-1*val[1]
   }
@@ -461,6 +461,8 @@ Construction_loan=list(loanbal=loanbal,interest=interest,
 #after stabilization, drop the cost floor
 
 #create an investment cash flow to accumulate cost on fsdates including cl interest
+opcf=cash_obj[,c("Revenue","OpEx")]
+opcf=xts(rowSums(opcf,na.rm=TRUE),index(opcf))
 icf=cash_obj[,c("Predevelopment","Construction","CapEx")]
 icf=cbind(-icf,Construction_loan[["constr_interest"]])
 icf=xts(rowSums(icf,na.rm=TRUE),index(icf))
@@ -469,8 +471,6 @@ value_add_interval=interval(Start_date,CofO_date+months(1+com_lease_mths))
 valuefloor=cumicf[fsdates]
 valuefloor[!index(valuefloor) %within% value_add_interval]=0
 #create an ebitda for capitalization
-opcf=cash_obj[,c("Revenue","OpEx")]
-opcf=xts(rowSums(opcf,na.rm=TRUE),index(opcf))
 ep=endpoints(opcf,"months")
 opcf=period.apply(opcf,ep,sum)
 opcf_roll12=rollapply(opcf,width=12,FUN=sum,align="right")
@@ -486,8 +486,8 @@ capex=cash_obj[,"CapEx"]
 capex[is.na(capex)]=0
 cumcapex=-cumsum(capex)
 cumcapex=cumcapex[fsdates]
-reserves=xts(c(rep(0,months_so_far),
-               rep(sum(capex)/months_to_go,months_to_go)),fsdates)
+reserves=xts(c(rep(0,months_so_far+12),
+               rep(sum(capex)/(months_to_go-12),months_to_go-12)),fsdates)
 reserves=cumsum(reserves)
 defdmaintenance=reserves+cumcapex
 #fairvalue calc
@@ -576,7 +576,7 @@ cf_tier[1,1]=levcf[1]
 ndays=c(0,diff(index(levcf)))
 #allocate cash
 for(i in 2:length(levcf)) {
-  cashleft=coredata(levcf[i])
+  cashleft=levcf.d[i]
   hurdlebal[i,]=hurdlebal[i-1,]*(1+(hurdle*ndays[i]/365))
   if(cashleft<=0) {
     hurdlebal[i,]=hurdlebal[i,]-rep(cashleft,eq_levels)
@@ -586,7 +586,10 @@ for(i in 2:length(levcf)) {
     splitcash=w_f(ladder,cashleft)
     cf_tier[i,]=splitcash*keep
     promote_tier[i,]=splitcash*promote
-    hurdlebal[i,]=hurdlebal[i,]-(splitcash*keep)[1:eq_levels]
+    invcash=sum(cf_tier[i,])
+    iladder=diff(c(0,hurdlebal[i,]))
+    isplit=w_f(iladder,invcash)
+    hurdlebal[i,]=hurdlebal[i,]-cumsum(isplit[1:eq_levels])
   }
 }
 hurdlebal=xts(hurdlebal,levcf.t)
@@ -614,7 +617,8 @@ for(i in 2:length(fv.d)) {
 hlbv_tier_investor=xts(hlbv_tier_investor,fv.t)
 hlbv_tier_sponsor=xts(hlbv_tier_sponsor,fv.t)
 
-equity_structure=list(cf_tier,promote_tier,hlbv_tier_investor,hlbv_tier_sponsor)
+equity_structure=list(cf_tier,promote_tier,hlbv_tier_investor,hlbv_tier_sponsor,hurdlebal)
+names(equity_structure)=c("cash_inv","cash_spons","hlbv_inv","hlbv_spons","hurdlbal")
 
 #build financial statements
 
@@ -708,6 +712,7 @@ ans=list(apt_config=apt_config,
          cflist=cflist,
          sumcflist=sumcf,
          analist=analist,
-         feelist=feelist)
+         feelist=feelist,
+         equitystructure=equity_structure)
 return(ans)
 }
