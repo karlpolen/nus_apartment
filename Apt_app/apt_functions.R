@@ -471,6 +471,8 @@ Construction_loan=list(loanbal=loanbal,interest=interest,
 
 
 #create an ebitda for capitalization
+opcf=cash_obj[,c("Revenue","OpEx")]
+opcf=xts(rowSums(opcf,na.rm=TRUE),index(opcf))
 ep=endpoints(opcf,"months")
 opcf=period.apply(opcf,ep,sum)
 opcf_roll12=rollapply(opcf,width=12,FUN=sum,align="right")
@@ -502,8 +504,6 @@ Permanent_loan=list(pl_balance=pl_bal,pl_interest=pl_interest,
 
 #finish value calcs with the calculated value floor
 #create an investment cash flow to accumulate cost on fsdates including cl interest
-opcf=cash_obj[,c("Revenue","OpEx")]
-opcf=xts(rowSums(opcf,na.rm=TRUE),index(opcf))
 icf=cash_obj[,c("Predevelopment","Construction","CapEx")]
 icf=cbind(-icf,Construction_loan[["interest"]])
 constr_cost=sum(totmat(icf[index(icf)<=CofO_date,]))
