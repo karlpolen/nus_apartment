@@ -17,6 +17,10 @@ ans=apt_analyzer(apt_config)
 
 #str(ans)
 analist=ans$analist
+
+
+
+
 feelist=ans$feelist
 eq=ans$equitystructure
 hurdle=eq$hurdlbal

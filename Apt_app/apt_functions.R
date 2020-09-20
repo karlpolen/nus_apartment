@@ -180,7 +180,8 @@ apt_analyzer=function(apt_config,
                       expense_sensitivity=0,
                       predev_delay=0,
                       constr_delay=0,
-                      constr_overrun=0) {
+                      constr_overrun=0,
+                      leaseup_delay=0) {
 specsid=apt_config[["Identification"]]
 model_length=filter(specsid,name=="model_length")$n_month
 
@@ -257,8 +258,8 @@ other_rev_per_mth=xts(rentindex*filter(specs,name=="other_rev")$value_per_month,
                       total_time_index)
 apt_occ_stable=1-filter(specs,name=="apt_rent")$vac_pct
 com_occ_stable=1-filter(specs,name=="com_rent")$vac_pct
-apt_lease_mths=filter(specs,name=="apt_rent")$leaseup_mths
-com_lease_mths=filter(specs,name=="com_rent")$leaseup_mths
+apt_lease_mths=filter(specs,name=="apt_rent")$leaseup_mths+leaseup_delay
+com_lease_mths=filter(specs,name=="com_rent")$leaseup_mths+leaseup_delay
 apt_occ=c(apt_occ_stable/apt_lease_mths*(1:apt_lease_mths),
           rep(apt_occ_stable,months_to_go-apt_lease_mths))
 apt_occ=xts(apt_occ,op_time_index)
@@ -381,7 +382,7 @@ specspl=apt_config[["PermanentLoan"]]
 max_loan=filter(specs,name=="max_loan")$value
 LTC=filter(specs,name=="LTC")$pct
 cl_start=permit_issued
-cl_end=CofO_date+months(filter(specspl,name=="CofO_lag")$n_month)
+cl_end=CofO_date+months(filter(specspl,name=="CofO_lag")$n_month)+round(leaseup_delay/2)
 cl_interval=interval(cl_start,cl_end)
 cf=cash_obj$Unlv_CF
 pdates=ymd(paste(year(cl_start),month(cl_start),1))
@@ -464,17 +465,11 @@ Construction_loan=list(loanbal=loanbal,interest=interest,
 #Valuation
 #set value through stabilization as greater of cost or current ebitda/caprate
 #after stabilization, drop the cost floor
+#
+# start the value calcs now, then finish after permanent loan
+#
 
-#create an investment cash flow to accumulate cost on fsdates including cl interest
-opcf=cash_obj[,c("Revenue","OpEx")]
-opcf=xts(rowSums(opcf,na.rm=TRUE),index(opcf))
-icf=cash_obj[,c("Predevelopment","Construction","CapEx")]
-icf=cbind(-icf,Construction_loan[["constr_interest"]])
-icf=xts(rowSums(icf,na.rm=TRUE),index(icf))
-cumicf=cumsum(icf)
-value_add_interval=interval(Start_date,CofO_date+months(1+com_lease_mths))
-valuefloor=cumicf[fsdates]
-valuefloor[!index(valuefloor) %within% value_add_interval]=0
+
 #create an ebitda for capitalization
 ep=endpoints(opcf,"months")
 opcf=period.apply(opcf,ep,sum)
@@ -485,6 +480,42 @@ deltacap=filter(specscap,name=="Cap_rate")$trend_delta_per_year
 caprate=caprate+cumsum(c(0,rep(deltacap/12,model_length-1)))
 caprate=xts(caprate,fsdates)
 incomevalue=xts(pmax(0,opcf_roll12/caprate),fsdates)
+
+#permanent loan
+
+pl_date=tail(index(draw[draw!=0]),1)
+pl_interval=interval(pl_date,end_date)
+LTV=filter(specspl,name=="LTV")$pct
+pl_intrate=filter(specscap,name=="Perm_loan_rate")$pct_per_year
+pl_costpct=filter(specspl,name=="cost_and_fee")$pct
+stablevalue=coredata(incomevalue[pl_date+days(1)+months(18)-days(1)])
+pl_loanamt=LTV*stablevalue
+pl_bal=xts(rep(NA,length(fsdates)),fsdates)
+pl_bal[index(pl_bal)<pl_date]=0
+pl_bal[pl_date]=pl_loanamt
+pl_bal=na.locf(pl_bal)       
+pl_cost=xts(pl_loanamt*pl_costpct,pl_date)
+pl_interest=pl_intrate*pl_bal/12
+pl_proceeds=xts(pl_loanamt,pl_date)
+Permanent_loan=list(pl_balance=pl_bal,pl_interest=pl_interest,
+                    pl_cost=pl_cost,pl_proceeds=pl_proceeds)
+
+#finish value calcs with the calculated value floor
+#create an investment cash flow to accumulate cost on fsdates including cl interest
+opcf=cash_obj[,c("Revenue","OpEx")]
+opcf=xts(rowSums(opcf,na.rm=TRUE),index(opcf))
+icf=cash_obj[,c("Predevelopment","Construction","CapEx")]
+icf=cbind(-icf,Construction_loan[["interest"]])
+constr_cost=sum(totmat(icf[index(icf)<=CofO_date,]))
+cost_overrun=  sum(cash_obj[,"Construction"]*1/(1+constr_overrun))
+valuebump=max(0,(.1*constr_cost)-cost_overrun)
+icf=cbind(icf,xts(valuebump,CofO_date)) #10% bump in value at C of O excluding overrun
+icf=cbind(icf,pl_cost)
+icf=xts(rowSums(icf,na.rm=TRUE),index(icf))
+cumicf=cumsum(icf)
+value_add_interval=interval(Start_date,CofO_date+months(1+com_lease_mths))
+valuefloor=cumicf[fsdates]
+valuefloor[!index(valuefloor) %within% value_add_interval]=0
 aptvalue=pmax(incomevalue,valuefloor)
 #calculate deferred maintenance
 capex=cash_obj[,"CapEx"]
@@ -504,24 +535,6 @@ fvgain[1]=0
 fv=list(aptvalue,defdmaintenance,cashbal,fairvalue,fvgain)
 names(fv)=c("Apt_Value","Defd_Maint","Cash_bal","Total_FV","FV_gain")
 
-#permanent loan
-
-pl_date=tail(index(draw[draw!=0]),1)
-pl_interval=interval(pl_date,end_date)
-LTV=filter(specspl,name=="LTV")$pct
-pl_intrate=filter(specscap,name=="Perm_loan_rate")$pct_per_year
-pl_costpct=filter(specspl,name=="cost_and_fee")$pct
-stablevalue=coredata(aptvalue[pl_date+days(1)+months(18)-days(1)])
-pl_loanamt=LTV*stablevalue
-pl_bal=xts(rep(NA,length(fsdates)),fsdates)
-pl_bal[index(pl_bal)<pl_date]=0
-pl_bal[pl_date]=pl_loanamt
-pl_bal=na.locf(pl_bal)       
-pl_cost=xts(pl_loanamt*pl_costpct,pl_date)
-pl_interest=pl_intrate*pl_bal/12
-pl_proceeds=xts(pl_loanamt,pl_date)
-Permanent_loan=list(pl_balance=pl_bal,pl_interest=pl_interest,
-                    pl_cost=pl_cost,pl_proceeds=pl_proceeds)
 
 #assemble levered cash flow
 levcf_obj=merge(cash_obj[,"Unlv_CF"],
@@ -705,6 +718,15 @@ feelist=list(am_fee,
              spons_eq)
 names(feelist)=c("AM_Fee","Excess_CF","Excess_HLBV","Promote_paid","Promote_HLBV")  
   
+#timeline
+predevmonths=sum(fsdates<permit_issued)
+constrmonths=sum(fsdates<CofO_date)-predevmonths
+stablemonths=length(fsdates)-sum(predevmonths,constrmonths,apt_lease_mths)
+mthtl=c(predevmonths,constrmonths,apt_lease_mths,stablemonths)
+timeline=factor(rep(c("Predevelopment","Construction","Lease_Up","Stable"),mthtl),
+                ordered=TRUE,
+                levels=c("Predevelopment","Construction","Lease_Up","Stable"))
+timeline=data.frame(Date=fsdates,Risk_Ctgry=timeline,idx=rep(1:4,mthtl))
 
 ans=list(apt_config=apt_config,
          predevelopment=predevelopment,
@@ -718,6 +740,7 @@ ans=list(apt_config=apt_config,
          sumcflist=sumcf,
          analist=analist,
          feelist=feelist,
-         equitystructure=equity_structure)
+         equitystructure=equity_structure,
+         timeline=timeline)
 return(ans)
 }

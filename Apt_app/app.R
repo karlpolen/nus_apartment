@@ -61,20 +61,30 @@ ui <- dashboardPage(
                     min=0,
                     max=12,
                     value=0,
+                    step=1),
+        sliderInput(inputId="leaseup_delay",
+                    label="Leaseup delay months",
+                    min=0,
+                    max=12,
+                    value=0,
                     step=1)
     ),
     dashboardBody(
         tabBox(
             width=12,
             tabPanel("Map",leafletOutput("map")), 
-            tabPanel("Financial Analysis",
+            tabPanel("Timeline",plotlyOutput("plot_timeline")),
+            tabPanel("IRR Analysis",
                      plotlyOutput("plot_irrs"),
-                     plotlyOutput("plot_3yr"),
-                     plotlyOutput("plot_cumcf")
+                     plotlyOutput("plot_3yr")
             ),
+            tabPanel("Cash Flow/NAV",
+                     plotlyOutput("plot_cumcf"),
+                     plotlyOutput("plot_unlcumcf")
+                     ),
             tabPanel("Promote",
                      plotlyOutput("plot_seq"),
-                     plotlyOutput("plot_seqlog"),
+                     #plotlyOutput("plot_seqlog"),
                      plotlyOutput("plot_seqpct")),
             tabPanel("Fee Analysis",
                      plotlyOutput("plot_fee"),
@@ -89,7 +99,6 @@ ui <- dashboardPage(
 )
 
 
-# Define server logic required to draw a histogram
 server <- function(input, output,session) {
     #  apt_config <- reactiveFileReader(
     #  intervalMillis = 1000,
@@ -104,11 +113,9 @@ server <- function(input, output,session) {
                      expense_sensitivity=input$exp_sens,
                      constr_overrun=input$overrun,
                      predev_delay=input$predev_delay,
-                     constr_delay=input$constr_delay)
+                     constr_delay=input$constr_delay,
+                     leaseup_delay=input$leaseup_delay)
     })
-    # ans=reactive({
-    #     apt_analyzer(apt_config)
-    # })
     output$projname=renderText({
         apt_config=ans()$apt_config
         specsid=apt_config[["Identification"]]
@@ -166,6 +173,19 @@ server <- function(input, output,session) {
             ggtitle("Investor Cumulative CF and NAV")
         ggplotly(plot)
     })
+    output$plot_unlcumcf=renderPlotly({
+        analist=ans()$analist
+        lcumcf=list(-1*cumsum(analist$Unlev_CF),analist$Unl_FV)
+        names(lcumcf)=c("Cum_CF","Gross_NAV")
+        cumcfdf=ltodf(lcumcf,wtotal=FALSE,donona=FALSE)
+        cumcfdfg=gather(cumcfdf,key="type",value="Dollars",-Date)
+        cumcfdfg=filter(cumcfdfg,!is.na(Dollars))
+        plot=ggplot(cumcfdfg,aes(x=Date,y=Dollars,col=type))+
+            geom_line()+
+            ggtitle("Unlevered Cumulative CF and NAV")
+        ggplotly(plot)
+    })
+    
     output$plot_fee=renderPlotly({
         feelist=ans()$feelist
         feedf=makefeedf(feelist)
@@ -194,7 +214,7 @@ server <- function(input, output,session) {
         seqdf=xtodf(sponsor_eq,name="Sponsor_Equity")
         plot=ggplot(seqdf,aes(x=Date,y=Sponsor_Equity))+
             geom_line()+
-            ggtitle("Sponsor Equity")
+            ggtitle("Sponsor Promote")
         ggplotly(plot)
     })
     output$plot_seqlog=renderPlotly({
@@ -203,7 +223,7 @@ server <- function(input, output,session) {
         seqdf=xtodf(sponsor_eq,name="Sponsor_Equity")
         plot=ggplot(seqdf,aes(x=Date,y=Sponsor_Equity))+
             geom_line()+
-            ggtitle("Sponsor Equity Log Scale")+
+            ggtitle("Sponsor Promote Log Scale")+
             scale_y_log10()
         ggplotly(plot)
     })
@@ -211,12 +231,12 @@ server <- function(input, output,session) {
         bslist=ans()$bslist
         sponsor_eq=bslist$Sponsor_Equity
         s_eq_roll12=rollapply(sponsor_eq,width=12,FUN=mean)
-        s_eq_r12_change=diff(s_eq_roll12)/s_eq_roll12
+        s_eq_r12_change=diff(s_eq_roll12,lag=12)/s_eq_roll12
         seqdf=xtodf(s_eq_r12_change,name="Sponsor_Eq_pct_change")
         plot=ggplot(seqdf,aes(x=Date,y=Sponsor_Eq_pct_change))+
             geom_line()+
-            ggtitle("Sponsor Equity Growth Rate")+
-            coord_cartesian(ylim=c(-.05,.15))
+            ggtitle("Sponsor Promote Growth Rate")
+            #coord_cartesian(ylim=c(-.05,1))
         ggplotly(plot)
     })
     output$plot_refi=renderPlotly({
@@ -231,6 +251,18 @@ server <- function(input, output,session) {
             geom_line()+
             ggtitle("Potential proceeds from refinance")
         ggplotly(plot)
+    })
+    output$plot_timeline=renderPlotly({
+        timeline=ans()$timeline
+        idx=which(timeline$Risk_Ctgry=="Stable")[12]
+        plot=ggplot(timeline[1:idx,],aes(x=Date,y=Risk_Ctgry))+
+            geom_line(aes(col=Risk_Ctgry),size=15)+
+            theme(legend.position="none")+
+            ggtitle("Timeline")+
+            ylab("")+
+            xlab("")
+        ggplotly(plot)
+        
     })
     output$map=renderLeaflet({
         apt_config=ans()$apt_config
