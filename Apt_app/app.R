@@ -89,12 +89,44 @@ ui <- dashboardPage(
             tabPanel("Fee Analysis",
                      plotlyOutput("plot_fee"),
                      plotlyOutput("plot_feepct")),
-        tabPanel("Income Statement",DT::DTOutput("is")),
-        tabPanel("Balance Sheet",
-                 DT::DTOutput("bs"),
-                 plotlyOutput("plot_refi")),
-        tabPanel("Cash Flow",DT::DTOutput("cf"))
-        )
+            tabPanel("Invstor Sensitivity",
+                     tabBox(width=12,
+                        tabPanel("ConstrDelay",
+                            plotlyOutput("plot_invsens_constr_delay")),
+                        tabPanel("LeaseupDelay",
+                            plotlyOutput("plot_invsens_leaseup_delay")),
+                        tabPanel("PredevDelay",
+                            plotlyOutput("plot_invsens_predev_delay")),
+                        tabPanel("ConstrOverrun",
+                                 plotlyOutput("plot_invsens_constr_overrun")),
+                        tabPanel("RentSens",
+                                 plotlyOutput("plot_invsens_rentsens"))
+                     )
+            ),
+            tabPanel("Sponsor Sensitivity",
+                     tabBox(width=12,
+                            tabPanel("ConstrDelay",
+                                     plotlyOutput("plot_sponsens_constr_delay")),
+                            tabPanel("LeaseupDelay",
+                                     plotlyOutput("plot_sponsens_leaseup_delay")),
+                            tabPanel("PredevDelay",
+                                     plotlyOutput("plot_sponsens_predev_delay")),
+                            tabPanel("ConstrOverrun",
+                                     plotlyOutput("plot_sponsens_constr_overrun")),
+                            tabPanel("RentSens",
+                                     plotlyOutput("plot_sponsens_rentsens"))
+                     )
+            ),
+            tabPanel("Financials",
+                     tabBox(width=12,
+                        tabPanel("Income Statement",DT::DTOutput("is")),
+                        tabPanel("Balance Sheet",
+                            DT::DTOutput("bs"),
+                            plotlyOutput("plot_refi")),
+                        tabPanel("Cash Flow",DT::DTOutput("cf"))
+                    )
+            )
+            )
     )
 )
 
@@ -262,8 +294,227 @@ server <- function(input, output,session) {
             ylab("")+
             xlab("")
         ggplotly(plot)
+    })
+ 
+    ## investor sensitiviy plots
+       output$plot_invsens_constr_delay=renderPlotly({
+        sensvarm=0:12
+        irrvec=vector()
+        for (i in 1:length(sensvarm)) {
+        ans2=apt_analyzer(apt_config,
+                     rent_sensitivity=input$rent_sens,
+                     expense_sensitivity=input$exp_sens,
+                     constr_overrun=input$overrun,
+                     predev_delay=input$predev_delay,
+                     constr_delay=sensvarm[i],
+                     leaseup_delay=input$leaseup_delay)
+        irrvec[i]=irr10yr(ans2$analist$Investor_CF,ans2$analist$Inv_FV)
+        }
+        irrdf=data.frame(Delay_mths=sensvarm,Invstr_10_yr_irr=irrvec)
+        plot=ggplot(irrdf,aes(x=Delay_mths,y=Invstr_10_yr_irr))+
+            geom_line()+
+            ggtitle("Impact of construction delay on investor returns")+
+            coord_cartesian(ylim=c(0,max(irrvec)))
+        ggplotly(plot)
         
     })
+       
+           
+    output$plot_invsens_leaseup_delay=renderPlotly({
+        sensvarm=0:12
+        irrvec=vector()
+        for (i in 1:length(sensvarm)) {
+            ans2=apt_analyzer(apt_config,
+                              rent_sensitivity=input$rent_sens,
+                              expense_sensitivity=input$exp_sens,
+                              constr_overrun=input$overrun,
+                              predev_delay=input$predev_delay,
+                              constr_delay=input$constr_delay,
+                              leaseup_delay=sensvarm[i])
+            irrvec[i]=irr10yr(ans2$analist$Investor_CF,ans2$analist$Inv_FV)
+        }
+        irrdf=data.frame(Delay_mths=sensvarm,Invstr_10_yr_irr=irrvec)
+        plot=ggplot(irrdf,aes(x=Delay_mths,y=Invstr_10_yr_irr))+
+            geom_line()+
+            ggtitle("Impact of leaseup delay on investor returns")+
+            coord_cartesian(ylim=c(0,max(irrvec)))
+        ggplotly(plot)
+        
+    })
+    output$plot_invsens_predev_delay=renderPlotly({
+        sensvarm=0:12
+        irrvec=vector()
+        for (i in 1:length(sensvarm)) {
+            ans2=apt_analyzer(apt_config,
+                              rent_sensitivity=input$rent_sens,
+                              expense_sensitivity=input$exp_sens,
+                              constr_overrun=input$overrun,
+                              predev_delay=sensvarm[i],
+                              constr_delay=input$constr_delay,
+                              leaseup_delay=input$leaseup_delay)
+            irrvec[i]=irr10yr(ans2$analist$Investor_CF,ans2$analist$Inv_FV)
+        }
+        irrdf=data.frame(Delay_mths=sensvarm,Invstr_10_yr_irr=irrvec)
+        plot=ggplot(irrdf,aes(x=Delay_mths,y=Invstr_10_yr_irr))+
+            geom_line()+
+            ggtitle("Impact of Predevelopment delay on investor returns")+
+            coord_cartesian(ylim=c(0,max(irrvec)))
+        ggplotly(plot)
+        
+    })
+    output$plot_invsens_rentsens=renderPlotly({
+        sensvarp=seq(-.1,.1,.02)
+        irrvec=vector()
+        for (i in 1:length(sensvarp)) {
+            ans2=apt_analyzer(apt_config,
+                              rent_sensitivity=sensvarp[i],
+                              expense_sensitivity=input$exp_sens,
+                              constr_overrun=input$overrun,
+                              predev_delay=sensvarm[i],
+                              constr_delay=input$constr_delay,
+                              leaseup_delay=input$leaseup_delay)
+            irrvec[i]=irr10yr(ans2$analist$Investor_CF,ans2$analist$Inv_FV)
+        }
+        irrdf=data.frame(Pct_change=sensvarp,Invstr_10_yr_irr=irrvec)
+        plot=ggplot(irrdf,aes(x=Pct_change,y=Invstr_10_yr_irr))+
+            geom_line()+
+            ggtitle("Impact of rent changes on investor returns")+
+            coord_cartesian(ylim=c(0,max(irrvec)))
+        ggplotly(plot)
+        
+    })
+    output$plot_invsens_constr_overrun=renderPlotly({
+        sensvarp=seq(0, .2, .02)
+        irrvec=vector()
+        for (i in 1:length(sensvarp)) {
+            ans2=apt_analyzer(apt_config,
+                              rent_sensitivity=input$rent_sens,
+                              expense_sensitivity=input$exp_sens,
+                              constr_overrun=sensvarp[i],
+                              predev_delay=sensvarm[i],
+                              constr_delay=input$constr_delay,
+                              leaseup_delay=input$leaseup_delay)
+            irrvec[i]=irr10yr(ans2$analist$Investor_CF,ans2$analist$Inv_FV)
+        }
+        irrdf=data.frame(Pct_change=sensvarp,Invstr_10_yr_irr=irrvec)
+        plot=ggplot(irrdf,aes(x=Pct_change,y=Invstr_10_yr_irr))+
+            geom_line()+
+            ggtitle("Impact of construction overrun on investor returns")+
+            coord_cartesian(ylim=c(0,max(irrvec)))
+        ggplotly(plot)
+        })
+        
+    ## sponsor sensitivity plots
+        output$plot_sponsens_constr_delay=renderPlotly({
+            sensvarm=0:12
+            provec=vector()
+            for (i in 1:length(sensvarm)) {
+                ans2=apt_analyzer(apt_config,
+                                  rent_sensitivity=input$rent_sens,
+                                  expense_sensitivity=input$exp_sens,
+                                  constr_overrun=input$overrun,
+                                  predev_delay=input$predev_delay,
+                                  constr_delay=sensvarm[i],
+                                  leaseup_delay=input$leaseup_delay)
+                provec[i]=ans2$bslist$Sponsor_Equity[120]
+            }
+            prodf=data.frame(Delay_mths=sensvarm,Promote_yr_10=provec)
+            plot=ggplot(prodf,aes(x=Delay_mths,y=Promote_yr_10))+
+                geom_line()+
+                ggtitle("Impact of construction delay on sponsor promote at year 10")+
+                coord_cartesian(ylim=c(0,max(provec)))
+            ggplotly(plot)
+            
+        })
+        output$plot_sponsens_leaseup_delay=renderPlotly({
+            sensvarm=0:12
+            provec=vector()
+            for (i in 1:length(sensvarm)) {
+                ans2=apt_analyzer(apt_config,
+                                  rent_sensitivity=input$rent_sens,
+                                  expense_sensitivity=input$exp_sens,
+                                  constr_overrun=input$overrun,
+                                  predev_delay=input$predev_delay,
+                                  constr_delay=input$constr_delay,
+                                  leaseup_delay=sensvarm[i])
+                provec[i]=ans2$bslist$Sponsor_Equity[120]
+            }
+            prodf=data.frame(Delay_mths=sensvarm,Promote_yr_10=provec)
+            plot=ggplot(prodf,aes(x=Delay_mths,y=Promote_yr_10))+
+                geom_line()+
+                ggtitle("Impact of leaseup delay on sponsor promote at year 10")+
+                coord_cartesian(ylim=c(0,max(provec)))
+            ggplotly(plot)
+            
+        })
+        output$plot_sponsens_predev_delay=renderPlotly({
+            sensvarm=0:12
+            provec=vector()
+            for (i in 1:length(sensvarm)) {
+                ans2=apt_analyzer(apt_config,
+                                  rent_sensitivity=input$rent_sens,
+                                  expense_sensitivity=input$exp_sens,
+                                  constr_overrun=input$overrun,
+                                  predev_delay=sensvarm[i],
+                                  constr_delay=input$constr_delay,
+                                  leaseup_delay=input$leaseup_delay)
+                provec[i]=ans2$bslist$Sponsor_Equity[120]
+            }
+            prodf=data.frame(Delay_mths=sensvarm,Promote_yr_10=provec)
+            plot=ggplot(prodf,aes(x=Delay_mths,y=Promote_yr_10))+
+                geom_line()+
+                ggtitle("Impact of Predevelopment delay on sponsor promote at year 10")+
+                coord_cartesian(ylim=c(0,max(provec)))
+            ggplotly(plot)
+            
+        })
+        output$plot_sponsens_rentsens=renderPlotly({
+            sensvarp=seq(-.1,.1,.02)
+            provec=vector()
+            for (i in 1:length(sensvarp)) {
+                ans2=apt_analyzer(apt_config,
+                                  rent_sensitivity=sensvarp[i],
+                                  expense_sensitivity=input$exp_sens,
+                                  constr_overrun=input$overrun,
+                                  predev_delay=sensvarm[i],
+                                  constr_delay=input$constr_delay,
+                                  leaseup_delay=input$leaseup_delay)
+                provec[i]=ans2$bslist$Sponsor_Equity[120]
+            }
+            prodf=data.frame(Pct_change=sensvarp,Promote_yr_10=provec)
+            plot=ggplot(prodf,aes(x=Pct_change,y=Promote_yr_10))+
+                geom_line()+
+                ggtitle("Impact of rent changes on sponsor promote at year 10")+
+                coord_cartesian(ylim=c(0,max(provec)))
+            ggplotly(plot)
+            
+        })
+        
+        output$plot_sponsens_constr_overrun=renderPlotly({
+        sensvarp=seq(0, .2, .02)
+        provec=vector()
+        for (i in 1:length(sensvarp)) {
+            ans2=apt_analyzer(apt_config,
+                              rent_sensitivity=input$rent_sens,
+                              expense_sensitivity=input$exp_sens,
+                              constr_overrun=sensvarp[i],
+                              predev_delay=sensvarm[i],
+                              constr_delay=input$constr_delay,
+                              leaseup_delay=input$leaseup_delay)
+            provec[i]=ans2$bslist$Sponsor_Equity[120]
+        }
+        prodf=data.frame(Pct_change=sensvarp,Promote_yr_10=provec)
+        plot=ggplot(prodf,aes(x=Pct_change,y=Promote_yr_10))+
+            geom_line()+
+            ggtitle("Impact of construction overrun on sponsor promote at year 10")+
+            coord_cartesian(ylim=c(0,max(provec)))
+        ggplotly(plot)
+        })    
+        
+        
+        
+        
+        
     output$map=renderLeaflet({
         apt_config=ans()$apt_config
         specsid=apt_config$Identification

@@ -17,7 +17,7 @@ ans=apt_analyzer(apt_config)
 
 #str(ans)
 analist=ans$analist
-
+bslist=ans$bslist
 
 
 

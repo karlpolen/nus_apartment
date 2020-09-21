@@ -141,6 +141,13 @@ rolling_irr=function(cf,nav,width) {
   return(irrvec)
 }
 
+irr10yr=function(x,y) {
+  irrdate=index(y)[120]
+  irrcf=makecf(x,y,end_date=irrdate)
+  irr.z(irrcf)
+}
+
+
 #function to manipulate feelist into fee analysis dataframe
 makefeedf=function(feelist) {
   totalexcess=ltomat.xts(list(cumsum(feelist$Excess_CF),
