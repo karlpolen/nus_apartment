@@ -3140,7 +3140,7 @@ slide:not(.current) .plotly.html-widget{
 <li>This slide presentation and the RMD that generated it</li>
 <li>apt.function.R is a set of functions to analyze apartment development projects</li>
 <li>modera_decatur.xlsx is the configuration file for the Modera Decatur project (you can modify this file to change the parameters or create a completely new project)</li>
-<li>app.R is a shiny app that shows the results of the analysis</li>
+<li>app.R is a shiny app that shows the results of the analysis and allows you to perform sensitivity to analysis to key risk factors</li>
 </ul>
 
 </article></slide><slide class=""><hgroup><h2>DCF analysis for real estate development projects</h2></hgroup><article  id="dcf-analysis-for-real-estate-development-projects">
@@ -3188,6 +3188,59 @@ slide:not(.current) .plotly.html-widget{
 <li>Analysis doesn’t help solve this. Sponsors and investors need to work collaboratively to deal with this dynamic if it happens in order to avoid destruction of capital.</li>
 <li>Use leverage prudently and maintain appropriate reserves</li>
 </ul>
+
+</article></slide><slide class=""><hgroup><h2>DCF analysis in R – the basics</h2></hgroup><article  id="dcf-analysis-in-r-the-basics">
+
+<ul>
+<li>Use <code>xts</code> time series objects to record cash flow amounts and dates. For example, you buy an asset for $100 and sell it for $150 18 months later.</li>
+</ul>
+
+<pre class = 'prettyprint lang-r'>buydate=as.Date(&quot;2016-01-01&quot;)
+(buy=xts(-100,buydate))</pre>
+
+<pre >##            [,1]
+## 2016-01-01 -100</pre>
+
+<pre class = 'prettyprint lang-r'>(sell=xts(150,buydate+months(18)))</pre>
+
+<pre >##            [,1]
+## 2017-07-01  150</pre>
+
+</article></slide><slide class=""><hgroup><h2>Time series arithmetic</h2></hgroup><article  id="time-series-arithmetic">
+
+<ul>
+<li>you can do calculations on xts time series, but xts requires a match on the time attribute. For example, <code>buy+sell</code> produces <code>zilde</code> because there is no match in the date.</li>
+</ul>
+
+<pre class = 'prettyprint lang-r'>buy+sell</pre>
+
+<pre >## Data:
+## numeric(0)
+## 
+## Index:
+## Date of length 0</pre>
+
+<p>On the other hand, this works, sort of. . .</p>
+
+<pre class = 'prettyprint lang-r'>sum(buy,sell,na.rm=TRUE)</pre>
+
+<pre >## [1] 50</pre>
+
+</article></slide><slide class=""><hgroup><h2>Assembling time series in a matrix</h2></hgroup><article  id="assembling-time-series-in-a-matrix">
+
+<ul>
+<li>The &ldquo;go-to&rdquo; technique is to assemble your time series as a matrix with <code>cbind</code> and then use <code>rowSums</code>. I use this technique a lot because it allows you to assemble and visualize data in logical subsets. It also allows you to deal with data of indeterminate length as illustrated with the following code.</li>
+</ul>
+
+<pre class = 'prettyprint lang-r'>cflist=list(Buy=buy,Sell=sell)
+cfmatrix=do.call(cbind,cflist) 
+cfmatrix=cbind(cfmatrix, xts(rowSums(cfmatrix,na.rm=TRUE),index(cfmatrix)))
+names(cfmatrix)=c(names(cflist),&quot;Total_CF&quot;)
+cfmatrix</pre>
+
+<pre >##             Buy Sell Total_CF
+## 2016-01-01 -100   NA     -100
+## 2017-07-01   NA  150      150</pre>
 
 </article></slide><slide class=""><hgroup><h2>Analyzing a rental house investment</h2></hgroup><article  id="analyzing-a-rental-house-investment">
 
@@ -3355,6 +3408,27 @@ irrcf_w_val=xts(rowSums(irrcfmat,na.rm=TRUE),index(irrcfmat))
 irr.z(irrcf_w_val)</pre>
 
 <pre >## [1] 0.1327838</pre>
+
+</article></slide><slide class=""><hgroup><h2>Observations and recommendations</h2></hgroup><article  id="observations-and-recommendations">
+
+<ul>
+<li>Record the cash flows using their known patterns as daily events</li>
+<li>Maintain that detail for calculations, but summarize into calendar periods for presentation</li>
+<li>Use detail where you have it, but don’t invent it when you are guessing</li>
+<li>Use broad categories for allowances and estimates</li>
+<li>The best model is the briefest model that accomplishes its purpose</li>
+</ul>
+
+</article></slide><slide class=""><hgroup><h2>Present results in standard financial statement format</h2></hgroup><article  id="present-results-in-standard-financial-statement-format">
+
+<ul>
+<li>This will facilitate communication by conforming to reporting norms</li>
+<li>It will facilitate comparison of underwriting forecasts to actual results</li>
+<li>The cash flow is necessary for investment metrics</li>
+<li>You need a balance sheet to assess viability of financial structure</li>
+<li>Taxable investors need an income statement to understand tax impacts</li>
+<li>Institutional investors need an income statement to decompose performance between operating income and appreciation</li>
+</ul>
 
 </article></slide><slide class=""><hgroup><h2>The Modera Decatur project</h2></hgroup><article  id="the-modera-decatur-project">
 

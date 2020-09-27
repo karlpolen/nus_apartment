@@ -37,7 +37,7 @@ Materials for this lecture are found at https://github.com/karlp-asrs/nus_apartm
 - This slide presentation and the RMD that generated it
 - apt.function.R is a set of functions to analyze apartment development projects
 - modera_decatur.xlsx is the configuration file for the Modera Decatur project (you can modify this file to change the parameters or create a completely new project)
-- app.R is a shiny app that shows the results of the analysis
+- app.R is a shiny app that shows the results of the analysis and allows you to perform sensitivity to analysis to key risk factors
 
 ## DCF analysis for real estate development projects
 
@@ -74,6 +74,42 @@ Materials for this lecture are found at https://github.com/karlp-asrs/nus_apartm
 - If a recession hits while your project is delivered to the market, this is a challenge and one of the bigger sources of bankruptcies in real estate
 - Analysis doesn't help solve this.  Sponsors and investors need to work collaboratively to deal with this dynamic if it happens in order to avoid destruction of capital.
 - Use leverage prudently and maintain appropriate reserves
+
+## DCF analysis in R -- the basics
+
+- Use `xts` time series objects to record cash flow amounts and dates.  For example, you buy an asset for \$100 and sell it for \$150 18 months later.
+
+```{r}
+buydate=as.Date("2016-01-01")
+(buy=xts(-100,buydate))
+(sell=xts(150,buydate+months(18)))
+```
+
+## Time series arithmetic
+
+- you can do calculations on xts time series, but xts requires a match on the time attribute.  For example, `buy+sell` produces `zilde` because there is no match in the date.
+
+```{r}
+buy+sell
+```
+
+On the other hand, this works, sort of. . .
+
+```{r}
+sum(buy,sell,na.rm=TRUE)
+```
+
+## Assembling time series in a matrix
+
+- The "go-to" technique is to assemble your time series as a matrix with `cbind` and then use `rowSums`.  I use this technique a lot because it allows you to assemble and visualize data in logical subsets.  It also allows you to deal with data of indeterminate length as illustrated with the following code. 
+
+```{r}
+cflist=list(Buy=buy,Sell=sell)
+cfmatrix=do.call(cbind,cflist) 
+cfmatrix=cbind(cfmatrix, xts(rowSums(cfmatrix,na.rm=TRUE),index(cfmatrix)))
+names(cfmatrix)=c(names(cflist),"Total_CF")
+cfmatrix
+```
 
 ## Analyzing a rental house investment
 
@@ -226,6 +262,24 @@ irrcfmat=cbind(irrcf,irrval)
 irrcf_w_val=xts(rowSums(irrcfmat,na.rm=TRUE),index(irrcfmat))
 irr.z(irrcf_w_val)
 ```
+
+## Observations and recommendations
+
+- Record the cash flows using their known patterns as daily events
+- Maintain that detail for calculations, but summarize into calendar periods for presentation
+- Use detail where you have it, but don't invent it when you are guessing
+- Use broad categories for allowances and estimates
+- The best model is the briefest model that accomplishes its purpose
+
+## Present results in standard financial statement format
+
+- This will facilitate communication by conforming to reporting norms
+- It will facilitate comparison of underwriting forecasts to actual results
+- The cash flow is necessary for investment metrics
+- You need a balance sheet to assess viability of financial structure
+- Taxable investors need an income statement to understand tax impacts
+- Institutional investors need an income statement to decompose performance between operating income and appreciation
+
 ## The Modera Decatur project
 
 A shiny app has been provided to illustrate this analysis
