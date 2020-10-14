@@ -86,10 +86,10 @@ mtodf=function(x) {
 
 #read an apartment configuration Excel file
 read_config = function(file_path) {
-  apt_sheets=excel_sheets("modera_decatur.xlsx")
+  apt_sheets=excel_sheets(file_path)
   apt_config=apt_sheets %>%
     as.list() %>%
-    map(~read_excel("modera_decatur.xlsx",sheet=.x))
+    map(~read_excel(file_path,sheet=.x))
   apt_config=set_names(apt_config,apt_sheets)
   return(apt_config)
 }

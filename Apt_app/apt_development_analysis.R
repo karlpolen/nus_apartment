@@ -30,8 +30,8 @@ ui <- dashboardPage(
     dashboardSidebar(
         selectInput(inputId="file",
                     label="Select file",
-                    choices=c("modera_decatur.xlsx"),
-                    selected="modera_decatur.xlsx"),
+                    choices=c("project_bulldog.xlsx"),
+                    selected="project_bulldog.xlsx"),
         sliderInput(inputId="rent_sens",
                     label="Rent Sensitivity %",
                     min=-.1,
