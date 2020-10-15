@@ -21,7 +21,7 @@ library(knitr)
 library(DT)
 library(leaflet)
 library(plotly)
-source("apt_functions.r")
+source("apt_functions.R")
 
 
 ui <- dashboardPage(
@@ -301,7 +301,7 @@ server <- function(input, output,session) {
         sensvarm=0:12
         irrvec=vector()
         for (i in 1:length(sensvarm)) {
-        ans2=apt_analyzer(apt_config,
+        ans2=apt_analyzer(ans()$apt_config,
                      rent_sensitivity=input$rent_sens,
                      expense_sensitivity=input$exp_sens,
                      constr_overrun=input$overrun,
@@ -324,7 +324,7 @@ server <- function(input, output,session) {
         sensvarm=0:12
         irrvec=vector()
         for (i in 1:length(sensvarm)) {
-            ans2=apt_analyzer(apt_config,
+            ans2=apt_analyzer(ans()$apt_config,
                               rent_sensitivity=input$rent_sens,
                               expense_sensitivity=input$exp_sens,
                               constr_overrun=input$overrun,
@@ -345,7 +345,7 @@ server <- function(input, output,session) {
         sensvarm=0:12
         irrvec=vector()
         for (i in 1:length(sensvarm)) {
-            ans2=apt_analyzer(apt_config,
+            ans2=apt_analyzer(ans()$apt_config,
                               rent_sensitivity=input$rent_sens,
                               expense_sensitivity=input$exp_sens,
                               constr_overrun=input$overrun,
@@ -366,7 +366,7 @@ server <- function(input, output,session) {
         sensvarp=seq(-.1,.1,.02)
         irrvec=vector()
         for (i in 1:length(sensvarp)) {
-            ans2=apt_analyzer(apt_config,
+            ans2=apt_analyzer(ans()$apt_config,
                               rent_sensitivity=sensvarp[i],
                               expense_sensitivity=input$exp_sens,
                               constr_overrun=input$overrun,
@@ -387,7 +387,7 @@ server <- function(input, output,session) {
         sensvarp=seq(0, .2, .02)
         irrvec=vector()
         for (i in 1:length(sensvarp)) {
-            ans2=apt_analyzer(apt_config,
+            ans2=apt_analyzer(ans()$apt_config,
                               rent_sensitivity=input$rent_sens,
                               expense_sensitivity=input$exp_sens,
                               constr_overrun=sensvarp[i],
@@ -409,7 +409,7 @@ server <- function(input, output,session) {
             sensvarm=0:12
             provec=vector()
             for (i in 1:length(sensvarm)) {
-                ans2=apt_analyzer(apt_config,
+                ans2=apt_analyzer(ans()$apt_config,
                                   rent_sensitivity=input$rent_sens,
                                   expense_sensitivity=input$exp_sens,
                                   constr_overrun=input$overrun,
@@ -430,7 +430,7 @@ server <- function(input, output,session) {
             sensvarm=0:12
             provec=vector()
             for (i in 1:length(sensvarm)) {
-                ans2=apt_analyzer(apt_config,
+                ans2=apt_analyzer(ans()$apt_config,
                                   rent_sensitivity=input$rent_sens,
                                   expense_sensitivity=input$exp_sens,
                                   constr_overrun=input$overrun,
@@ -451,7 +451,7 @@ server <- function(input, output,session) {
             sensvarm=0:12
             provec=vector()
             for (i in 1:length(sensvarm)) {
-                ans2=apt_analyzer(apt_config,
+                ans2=apt_analyzer(ans()$apt_config,
                                   rent_sensitivity=input$rent_sens,
                                   expense_sensitivity=input$exp_sens,
                                   constr_overrun=input$overrun,
@@ -472,7 +472,7 @@ server <- function(input, output,session) {
             sensvarp=seq(-.1,.1,.02)
             provec=vector()
             for (i in 1:length(sensvarp)) {
-                ans2=apt_analyzer(apt_config,
+                ans2=apt_analyzer(ans()$apt_config,
                                   rent_sensitivity=sensvarp[i],
                                   expense_sensitivity=input$exp_sens,
                                   constr_overrun=input$overrun,
@@ -494,7 +494,7 @@ server <- function(input, output,session) {
         sensvarp=seq(0, .2, .02)
         provec=vector()
         for (i in 1:length(sensvarp)) {
-            ans2=apt_analyzer(apt_config,
+            ans2=apt_analyzer(ans()$apt_config,
                               rent_sensitivity=input$rent_sens,
                               expense_sensitivity=input$exp_sens,
                               constr_overrun=sensvarp[i],
